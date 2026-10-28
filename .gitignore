@@ -1,0 +1,48 @@
+# Visual Studio
+.vs/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+*_wpftmp.csproj
+
+# Build output
+[Bb]in/
+[Oo]bj/
+[Bb]uild/
+[Dd]ebug/
+[Rr]elease/
+[Xx]64/
+[Xx]86/
+[Aa]pp[Pp]ackages/
+BundleArtifacts/
+Generated Files/
+
+# Build artifacts
+*.pdb
+*.ilk
+*.ipch
+*.iobj
+*.ipdb
+*.exp
+*.tlog
+*.VC.db
+*.VC.opendb
+*.aps
+*.cache
+
+# NuGet (restore via packages.config / PackageReference)
+packages/
+*.nupkg
+
+# Runtime data
+Logs/
+ImageTemp/
+AwakenGPUToolLog.txt
+images_v2.db
+
+# VisionMaster solution + calib + ảnh chụp tài liệu (solution > 100 MB, vượt giới hạn GitHub) — giữ trên ổ đĩa / Seafile
+Job/
+
+# wpcap x64 import libs: the project links $(SoemDir)oshw\win32\wpcap\Libd (ghi de rule [Xx]64/ o tren)
+!ShieldCanLaser.WinUI/ThirdParty/soem/oshw/win32/wpcap/Lib/x64/

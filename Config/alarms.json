@@ -1,0 +1,420 @@
+﻿{
+  "_comment": "Bảng mã alarm — Shield CAN Laser Marking MC (trục X/Y/Z, 7 nozzle, 2 tray, laser kích bằng DO). Sửa được lời văn mà không cần build lại app. {AXIS} trong axisFaults được thay bằng tên trục lúc chạy. Level: Info | Warning | Error | Fatal.",
+
+  "axisFaults": {
+    "0": {
+      "level": "Fatal",
+      "vi": "Trục {AXIS}: mất kết nối",
+      "en": "Axis {AXIS}: communication lost",
+      "cause": "Bus EtherCAT chưa mở, đứt cáp mạng giữa các driver, tắt nguồn driver, hoặc slave {AXIS} không đạt khi Connect All Axis (sai vị trí slave, sai loại driver).",
+      "remedy": "Kiểm tra cáp EtherCAT và nguồn driver {AXIS}. Trang Setting: Scan để xem các slave trên bus, đối chiếu vị trí slave/loại driver rồi bấm Connect All Axis.",
+      "causeEn": "EtherCAT bus not open, network cable broken between drivers, driver power off, or slave {AXIS} failed Connect All Axis (wrong slave position or driver type).",
+      "remedyEn": "Check the EtherCAT cable and power of driver {AXIS}. Setting page: Scan to list slaves on the bus, check slave position/driver type, then press Connect All Axis."
+    },
+    "1": {
+      "level": "Fatal",
+      "vi": "Trục {AXIS}: driver báo alarm",
+      "en": "Axis {AXIS}: driver alarm",
+      "cause": "Driver phát alarm nội bộ (quá tải, quá dòng, lỗi encoder, quá nhiệt). Mã lỗi cụ thể xem cột Detail.",
+      "remedy": "Tra mã lỗi trong tài liệu driver. Khắc phục nguyên nhân cơ/điện rồi bấm RESET. Sau lỗi mất vị trí phải chạy lại Origin.",
+      "causeEn": "Driver raised an internal alarm (overload, overcurrent, encoder error, overheat). See the Detail column for the error code.",
+      "remedyEn": "Look up the error code in the driver manual. Fix the mechanical/electrical cause, then press RESET. Run Origin again if position was lost."
+    },
+    "2": {
+      "level": "Error",
+      "vi": "Trục {AXIS}: quá thời gian chuyển động",
+      "en": "Axis {AXIS}: move timeout",
+      "cause": "Trục không tới đích trong thời gian cho phép: kẹt cơ, tải nặng bất thường, tốc độ đặt quá thấp, hoặc timeout cấu hình quá ngắn.",
+      "remedy": "Kiểm tra trục có bị kẹt không. Xem lại tốc độ và timeout của {AXIS} trong trang Setting.",
+      "causeEn": "Axis did not reach the target in time: mechanical jam, abnormal load, speed set too low, or timeout too short.",
+      "remedyEn": "Check the axis for jams. Review speed and timeout of {AXIS} on the Setting page."
+    },
+    "3": {
+      "level": "Error",
+      "vi": "Trục {AXIS}: chạm soft limit",
+      "en": "Axis {AXIS}: soft limit reached",
+      "cause": "Lệnh chuyển động vượt giới hạn mềm đã đặt. Thường do teach sai điểm hoặc lượng bù vision quá lớn.",
+      "remedy": "Kiểm tra điểm teach và giá trị bù. Nếu giới hạn mềm đặt sai thì sửa trong trang Setting.",
+      "causeEn": "Move command exceeds the soft limit. Usually a wrong teach point or too large a vision offset.",
+      "remedyEn": "Check teach points and offsets. If the soft limit is wrong, fix it on the Setting page."
+    },
+    "4": {
+      "level": "Warning",
+      "vi": "Trục {AXIS}: chạm hard limit (POT/NOT)",
+      "en": "Axis {AXIS}: hard limit hit",
+      "cause": "Trục chạy tới cảm biến giới hạn cứng. Driver tự dừng trục ngay khi chạm — phần mềm chỉ hiển thị, không tự khoá chuyển động của các trục khác (Tuấn quyết định, 2026-09-08: driver đã tự xử lý, không cần app khoá chéo).",
+      "remedy": "Jog {AXIS} ra khỏi cảm biến giới hạn ở trang Manual — cảnh báo tự hết khi rời khỏi, không cần bấm RESET. Nếu lặp lại, kiểm tra lại soft limit/vị trí đã teach.",
+      "causeEn": "Axis reached the hard limit sensor. The driver stops the axis at once — the software only displays it and does not lock other axes.",
+      "remedyEn": "Jog {AXIS} off the limit sensor on the Manual page — the warning clears when it leaves, no RESET needed. If it repeats, check soft limits/teach points."
+    },
+    "5": {
+      "level": "Error",
+      "vi": "Trục {AXIS}: về gốc thất bại",
+      "en": "Axis {AXIS}: homing failed",
+      "cause": "Quá thời gian về gốc, hoặc driver báo alarm trong lúc đang về gốc.",
+      "remedy": "Kiểm tra cảm biến gốc của {AXIS}, Homing method (0x6098) và tốc độ về gốc ở trang Setting. Chiều và kiểu về gốc do driver quyết định theo Homing method.",
+      "causeEn": "Homing timeout, or driver alarm during homing.",
+      "remedyEn": "Check the home sensor of {AXIS}, Homing method (0x6098) and homing speed on the Setting page. Homing direction and type are set by the driver Homing method."
+    },
+    "6": {
+      "level": "Error",
+      "vi": "Trục {AXIS}: chưa về gốc",
+      "en": "Axis {AXIS}: not homed",
+      "cause": "Nhận lệnh chuyển động tuyệt đối khi trục chưa xác định gốc toạ độ.",
+      "remedy": "Chạy chuỗi Origin.",
+      "causeEn": "Absolute move commanded before the axis was homed.",
+      "remedyEn": "Run Origin."
+    },
+    "7": {
+      "level": "Fatal",
+      "vi": "Trục {AXIS}: servo tắt ngoài ý muốn",
+      "en": "Axis {AXIS}: unexpected servo off",
+      "cause": "Servo chuyển sang trạng thái OFF mà phần mềm không ra lệnh: mất nguồn động lực, STO tác động, hoặc driver tự bảo vệ.",
+      "remedy": "Kiểm tra mạch an toàn và nguồn động lực. Bật servo lại, bấm RESET, chạy lại Origin.",
+      "causeEn": "Servo turned OFF without a software command: motor power lost, STO active, or driver self-protection.",
+      "remedyEn": "Check the safety circuit and motor power. Turn servo on, press RESET, run Origin again."
+    },
+    "8": {
+      "level": "Fatal",
+      "vi": "Trục {AXIS}: sai lệch vị trí quá lớn",
+      "en": "Axis {AXIS}: following error",
+      "cause": "Vị trí thực lệch quá xa vị trí lệnh — kẹt cơ, va chạm, hoặc gain của driver đặt sai.",
+      "remedy": "DỪNG MÁY VÀ KIỂM TRA CƠ KHÍ trước khi cho chạy lại. Đây thường là dấu hiệu va chạm thật.",
+      "causeEn": "Actual position too far from command position — mechanical jam, collision, or wrong driver gain.",
+      "remedyEn": "STOP THE MACHINE AND CHECK THE MECHANICS before running again. This is usually a real collision."
+    }
+  },
+
+  "codes": {
+    "1000": {
+      "level": "Fatal",
+      "vi": "Cấu hình hệ thống không hợp lệ",
+      "en": "Invalid system configuration",
+      "cause": "system.json thiếu trường bắt buộc, sai kiểu dữ liệu, hoặc file hỏng.",
+      "remedy": "Khôi phục system.json từ bản backup trong trang Setting.",
+      "causeEn": "system.json is missing a required field, has a wrong data type, or is corrupt.",
+      "remedyEn": "Restore system.json from backup on the Setting page."
+    },
+    "1001": {
+      "level": "Error",
+      "vi": "Chu trình gặp lỗi không lường trước",
+      "en": "Routine crashed",
+      "cause": "Ngoại lệ chưa xử lý trong routine. Xem log để biết vị trí.",
+      "remedy": "Ghi lại nội dung log và báo kỹ thuật. Bấm RESET rồi chạy lại Origin.",
+      "causeEn": "Unhandled exception in a routine. See the log for the location.",
+      "remedyEn": "Save the log and contact engineering. Press RESET, then run Origin again."
+    },
+    "1002": {
+      "level": "Fatal",
+      "vi": "Watchdog: vòng điều khiển ngừng đáp ứng",
+      "en": "Control loop watchdog timeout",
+      "cause": "Vòng McControl không tick trong thời gian cho phép — máy tính quá tải, thread bị chặn, hoặc driver treo.",
+      "remedy": "Đóng bớt ứng dụng khác. Nếu lặp lại, ghi log và báo kỹ thuật — máy không được chạy Auto khi watchdog còn tác động.",
+      "causeEn": "McControl loop did not tick in time — PC overloaded, thread blocked, or driver hung.",
+      "remedyEn": "Close other applications. If it repeats, save the log and contact engineering — do not run Auto while the watchdog is active."
+    },
+    "1003": {
+      "level": "Warning",
+      "vi": "Ổ đĩa sắp đầy",
+      "en": "Disk space low",
+      "cause": "Ổ chứa dữ liệu chạy máy còn ít dung lượng cho log, ảnh NG và dữ liệu sản xuất.",
+      "remedy": "Sao lưu rồi xoá thư mục Log và Image\\NG cũ.",
+      "causeEn": "Data drive is low on space for logs, NG images and production data.",
+      "remedyEn": "Back up, then delete old Log and Image\\NG folders."
+    },
+    "1099": {
+      "level": "Error",
+      "vi": "Alarm chưa định nghĩa",
+      "en": "Undefined alarm",
+      "cause": "Mã alarm được phát nhưng không có trong alarms.json.",
+      "remedy": "Bổ sung mã vào Config\\alarms.json.",
+      "causeEn": "An alarm code was raised but is not in alarms.json.",
+      "remedyEn": "Add the code to Config\\alarms.json."
+    },
+
+    "1100": {
+      "level": "Fatal",
+      "vi": "DỪNG KHẨN CẤP (EMG)",
+      "en": "Emergency stop",
+      "cause": "Nút dừng khẩn cấp đang bị nhấn, hoặc mạch an toàn hở (đứt dây tín hiệu NC).",
+      "remedy": "Xoay nhả nút EMG, bấm RESET để đóng lại mạch an toàn, bật servo, gỡ can còn trên nozzle, rồi chạy lại Origin.",
+      "causeEn": "Emergency stop button pressed, or safety circuit open (NC signal wire broken).",
+      "remedyEn": "Release the EMG button, press RESET to close the safety circuit, turn servo on, remove any can left on the nozzles, then run Origin again."
+    },
+    "1103": {
+      "level": "Error",
+      "vi": "Áp suất khí thấp",
+      "en": "Air pressure low",
+      "cause": "Công tắc áp suất báo thiếu khí. Không đủ chân không để giữ sản phẩm.",
+      "remedy": "Kiểm tra nguồn khí nén và bộ lọc/điều áp. Bấm RESET sau khi áp suất phục hồi.",
+      "causeEn": "Pressure switch reports low air. Not enough vacuum to hold the product.",
+      "remedyEn": "Check the air supply and filter/regulator. Press RESET when pressure recovers."
+    },
+    "1105": {
+      "level": "Error",
+      "vi": "Rèm sáng bị cắt",
+      "en": "Light curtain interrupted",
+      "cause": "Có vật hoặc người cắt ngang rèm sáng. Cũng có thể do lệch chỉnh đầu phát/đầu thu, bẩn kính, hoặc đứt dây (tín hiệu đấu NC).",
+      "remedy": "Rút tay/vật ra khỏi vùng bảo vệ, bấm RESET. Rèm sáng đòi hỏi RESET bằng tay là chủ ý — người đi qua được vùng này thì máy không được tự chạy lại khi rèm thông trở lại. Nhắc thợ điện: ngõ ra OSSD của rèm phải đi thẳng vào relay an toàn, đường về Remote IO chỉ để hiển thị.",
+      "causeEn": "Something or someone broke the light curtain. Also possible: emitter/receiver misaligned, dirty lens, or broken wire (NC signal).",
+      "remedyEn": "Remove hands/objects from the protected zone, press RESET. Manual RESET is intentional — the machine must not restart by itself when the curtain clears. Note for electricians: curtain OSSD outputs must go directly to the safety relay; the Remote IO input is for display only."
+    },
+
+    "3000": {
+      "level": "Fatal",
+      "vi": "Mất kết nối card I/O",
+      "en": "I/O card disconnected",
+      "cause": "Không giao tiếp được với Remote IO EtherCAT (R1EC): bus chưa mở, đứt cáp, mất nguồn bộ ghép, hoặc slave Remote IO không đạt khi Connect All Axis.",
+      "remedy": "Kiểm tra cáp EtherCAT và nguồn của R1EC. Trang Setting: đối chiếu vị trí slave của Remote IO rồi bấm Connect All Axis.",
+      "causeEn": "No communication with the EtherCAT Remote IO (R1EC): bus not open, cable broken, coupler power lost, or Remote IO slave failed Connect All Axis.",
+      "remedyEn": "Check the EtherCAT cable and R1EC power. Setting page: check the Remote IO slave position, then press Connect All Axis."
+    },
+    "3001": {
+      "level": "Error",
+      "vi": "Ghi tín hiệu ra I/O thất bại",
+      "en": "I/O write failed",
+      "cause": "Lệnh ghi DO không thành công.",
+      "remedy": "Kiểm tra kết nối card I/O. Nếu lặp lại, kiểm tra tải đấu vào ngõ ra.",
+      "causeEn": "DO write command failed.",
+      "remedyEn": "Check the I/O card connection. If it repeats, check the load wired to the output."
+    },
+    "3002": {
+      "level": "Error",
+      "vi": "Remote IO báo lỗi module",
+      "en": "Remote IO module fault",
+      "cause": "Bộ ghép R1EC báo trạng thái thiết bị khác 0 (0xF100:01): module trong rack lỏng, thiếu module, hoặc module lỗi.",
+      "remedy": "Kiểm tra các module cắm trong rack R1EC và nguồn 24V của module. Mã trạng thái xem cột Chi tiết.",
+      "causeEn": "R1EC coupler reports a non-zero device status (0xF100:01): loose, missing or faulty module in the rack.",
+      "remedyEn": "Check the modules in the R1EC rack and their 24V supply. See the Detail column for the status code."
+    },
+
+    "3100": {
+      "level": "Fatal",
+      "vi": "Không mở được bus EtherCAT",
+      "en": "EtherCAT bus unavailable",
+      "cause": "Thiếu EtherCatMaster.Native.dll cạnh exe, Npcap chưa cài, hoặc chọn sai card mạng ở trang Setting.",
+      "remedy": "Cài Npcap, chọn đúng card mạng nối với chuỗi EtherCAT ở trang Setting, lưu rồi khởi động lại ứng dụng. Chi tiết lỗi xem cột Chi tiết.",
+      "causeEn": "EtherCatMaster.Native.dll missing next to the exe, Npcap not installed, or wrong network adapter selected on the Setting page.",
+      "remedyEn": "Install Npcap, select the adapter connected to the EtherCAT chain on the Setting page, save, then restart the app. See the Detail column for the error."
+    },
+    "3101": {
+      "level": "Fatal",
+      "vi": "EtherCAT: có slave không đạt khi Connect All Axis",
+      "en": "EtherCAT: slave validation failed",
+      "cause": "Một slave không trả lời, sai loại driver so với cấu hình, PDO mặc định không đủ đối tượng cần dùng, hoặc số slave trên mạng khác số slot đã gán driver (thừa/thiếu driver). Bus chỉ mở khi MỌI slot đều đạt và số slave khớp.",
+      "remedy": "Kiểm tra dây và nguồn của từng driver. Trang Setting: bấm Scan để xem các slave thật trên bus, sửa vị trí slave/loại driver cho khớp rồi bấm Connect All Axis.",
+      "causeEn": "A slave did not respond, driver type differs from config, default PDO lacks a required object, or slave count on the network differs from assigned slots (extra/missing driver). The bus opens only when ALL slots pass and the slave count matches.",
+      "remedyEn": "Check wiring and power of each driver. Setting page: press Scan to list the real slaves, fix slave position/driver type, then press Connect All Axis."
+    },
+
+    "4000": {
+      "level": "Error",
+      "vi": "Không kết nối được VisionMaster",
+      "en": "VisionMaster not connected",
+      "cause": "Chưa cài VisionMaster, hoặc SDK không nạp được.",
+      "remedy": "Kiểm tra cài đặt VisionMaster 4.4.0 và bản quyền/dongle.",
+      "causeEn": "VisionMaster not installed, or SDK failed to load.",
+      "remedyEn": "Check the VisionMaster 4.4.0 installation and license/dongle."
+    },
+    "4001": {
+      "level": "Warning",
+      "vi": "Nạp solution vision thất bại",
+      "en": "Vision solution load failed",
+      "cause": "File .solw không tồn tại, sai đường dẫn, hoặc tên procedure không khớp. Routine_Auto đã tự kiểm IsSolutionLoaded riêng ở S00 nên không cần alarm này chặn cả máy — chặn cả Jog/SVO ON của mọi trục vì thiếu vision là khoá chéo sai (Tuấn quyết định, 2026-09-08).",
+      "remedy": "Kiểm tra đường dẫn solution trong trang Setting và tên Flow LocateCan, bấm Nạp lại. Auto vẫn bị chặn riêng tới khi nạp được — không liên quan cảnh báo này.",
+      "causeEn": ".solw file missing, wrong path, or procedure name mismatch. Routine_Auto checks IsSolutionLoaded itself at S00, so this alarm does not block the whole machine.",
+      "remedyEn": "Check the solution path on the Setting page and the Flow name LocateCan, then press Reload. Auto stays blocked until it loads — independent of this warning."
+    },
+    "4002": {
+      "level": "Error",
+      "vi": "Vision chưa sẵn sàng",
+      "en": "Vision not ready",
+      "cause": "Nhận lệnh chụp khi solution chưa nạp xong.",
+      "remedy": "Chờ nạp xong solution rồi chạy lại.",
+      "causeEn": "Capture command received before the solution finished loading.",
+      "remedyEn": "Wait for the solution to load, then run again."
+    },
+    "4003": {
+      "level": "Error",
+      "vi": "Quá thời gian chờ kết quả vision",
+      "en": "Vision trigger timeout",
+      "cause": "Đã kích chụp nhưng không nhận được kết quả trong thời gian cho phép.",
+      "remedy": "Kiểm tra kết nối camera và nguồn sáng. Xem lại timeout trong trang Setting.",
+      "causeEn": "Capture triggered but no result received in time.",
+      "remedyEn": "Check the camera connection and lighting. Review the timeout on the Setting page."
+    },
+    "4004": {
+      "level": "Warning",
+      "vi": "Vision không tìm thấy đối tượng",
+      "en": "Vision: object not found",
+      "cause": "Không có sản phẩm, sản phẩm lệch ngoài vùng tìm, hoặc chiếu sáng thay đổi.",
+      "remedy": "Kiểm tra ánh sáng và vùng tìm kiếm của procedure. Máy tự đánh dấu NG và chạy tiếp.",
+      "causeEn": "No product, product outside the search area, or lighting changed.",
+      "remedyEn": "Check lighting and the procedure search area. The machine marks NG and continues."
+    },
+    "4005": {
+      "level": "Warning",
+      "vi": "Vision: điểm số nhận dạng thấp",
+      "en": "Vision: low matching score",
+      "cause": "Tìm thấy nhưng độ khớp dưới ngưỡng — sản phẩm bẩn, xước, hoặc mẫu chưa hợp.",
+      "remedy": "Kiểm tra chất lượng sản phẩm và mẫu nhận dạng. Xem lại ngưỡng điểm.",
+      "causeEn": "Found but match score below threshold — product dirty or scratched, or model not suitable.",
+      "remedyEn": "Check product quality and the match model. Review the score threshold."
+    },
+    "4006": {
+      "level": "Error",
+      "vi": "Camera chưa được hiệu chuẩn",
+      "en": "Camera not calibrated",
+      "cause": "Chưa có dữ liệu hiệu chuẩn pixel→mm cho camera này.",
+      "remedy": "Chạy wizard hiệu chuẩn ở trang Teaching trước khi chạy Auto.",
+      "causeEn": "No pixel→mm calibration data for this camera.",
+      "remedyEn": "Run the calibration wizard on the Teaching page before running Auto."
+    },
+    "4010": {
+      "level": "Error",
+      "vi": "Flow trả dữ liệu không khớp hợp đồng",
+      "en": "Vision flow contract mismatch",
+      "cause": "Echo RunId hoặc biến trục sai, thiếu output, số không hữu hạn, biến toàn cục chưa khai, Script không chạy tới lệnh cuối, hoặc lệnh ngoài soft limit.",
+      "remedy": "Can vẫn trên nozzle. Đọc chi tiết alarm, sửa Flow hoặc biến theo cẩm nang, bấm RESET rồi chạy lại — chu trình bắt đầu lại từ S00.",
+      "causeEn": "Wrong RunId echo or axis variable, missing output, non-finite number, undeclared global variable, Script did not reach the last command, or command outside soft limit.",
+      "remedyEn": "The can is still on the nozzle. Read the alarm detail, fix the Flow or variables per the manual, press RESET and run again — the cycle restarts from S00."
+    },
+    "4011": {
+      "level": "Error",
+      "vi": "Hiệu chuẩn chưa sẵn sàng",
+      "en": "Calibration not ready",
+      "cause": "Cổng hiệu chuẩn của App chặn: chưa kiểm tra lưới X × Z, nozzle chưa SET MASTER, hoặc ngưỡng bù (Gain/MaxCompMm) ở Setting sai.",
+      "remedy": "Chạy lại bước hiệu chuẩn mà chi tiết alarm nêu ở trang Vision Edit, bấm RESET rồi chạy lại.",
+      "causeEn": "App calibration gate blocked: X × Z grid check missing, nozzle master not set, or wrong compensation limits (Gain/MaxCompMm) in Setting.",
+      "remedyEn": "Redo the calibration step named in the alarm detail on the Vision Edit page, press RESET, then run again."
+    },
+    "4090": {
+      "level": "Warning",
+      "vi": "Hiệu chuẩn camera đã quá hạn",
+      "en": "Camera calibration expired",
+      "cause": "Lần hiệu chuẩn gần nhất đã quá số ngày cho phép.",
+      "remedy": "Chạy lại lưới 9 điểm X × Z và SET MASTER ở trang Vision Edit.",
+      "causeEn": "Last calibration is older than the allowed number of days.",
+      "remedyEn": "Redo the 9-point X × Z grid and SET MASTER on the Vision Edit page."
+    },
+
+    "5001": {
+      "level": "Warning",
+      "vi": "Hút hụt sản phẩm",
+      "en": "Pick failed",
+      "cause": "Nozzle không có tín hiệu chân không sau khi hạ, hút và nâng cả hàng — ô trống, can lệch, hoặc nozzle bẩn/tắc. Chi tiết alarm nêu số nozzle hụt.",
+      "remedy": "Máy đánh dấu ô đó NG, không soi/khắc nozzle đó, vẫn chạy tiếp các nozzle còn lại. Nếu lặp nhiều: vệ sinh nozzle, kiểm tra cao độ Z của điểm Pick (Teaching).",
+      "causeEn": "No vacuum signal on a nozzle after lowering, sucking and lifting the row — empty cell, can offset, or nozzle dirty/clogged. The alarm detail names the nozzle.",
+      "remedyEn": "The machine marks that cell NG, skips vision/laser for that nozzle and continues with the others. If frequent: clean the nozzle, check the Z height of the Pick point (Teaching)."
+    },
+    "5002": {
+      "level": "Error",
+      "vi": "Rơi sản phẩm giữa chu trình",
+      "en": "Product dropped",
+      "cause": "Mất tín hiệu chân không khi đang mang can tới CAM / laser.",
+      "remedy": "DỪNG và tìm can rơi trong máy trước khi chạy lại — vật rơi sẽ thành vật cản cho lần Origin sau.",
+      "causeEn": "Vacuum lost while carrying a product.",
+      "remedyEn": "STOP and find the dropped product inside the machine before running again — it will become an obstacle on the next Origin."
+    },
+    "5003": {
+      "level": "Warning",
+      "vi": "Trả can về tray thất bại",
+      "en": "Return to tray failed",
+      "cause": "Sau khi tắt van, cảm biến vẫn báo còn can trên nozzle — dính do tĩnh điện hoặc van không nhả.",
+      "remedy": "Kiểm tra van chân không và khử tĩnh điện; gỡ can trên nozzle rồi bấm RESET.",
+      "causeEn": "After the valve is switched off, the sensor still reports a can on the nozzle — static cling or valve not releasing.",
+      "remedyEn": "Check the vacuum valve and anti-static; remove the can from the nozzle, then press RESET."
+    },
+    "5004": {
+      "level": "Warning",
+      "vi": "Lượng bù vượt ngưỡng cho phép",
+      "en": "Compensation out of range",
+      "cause": "Độ lệch X/Z của can trên nozzle so với master (Rel − Ref) vượt MaxCompMm ở trang Setting — nhiều khả năng vision đo nhầm vật, master đặt sai, hoặc can lệch thật.",
+      "remedy": "Máy KHÔNG khắc can đó, đánh dấu ô NG và trả can về tray. Kiểm tra Flow LocateCan, vùng tìm kiếm và SET MASTER của nozzle nêu trong chi tiết alarm.",
+      "causeEn": "X/Z deviation of the can on the nozzle vs. master (Rel − Ref) exceeds MaxCompMm on the Setting page — vision most likely measured the wrong object, master set wrongly, or the can is really offset.",
+      "remedyEn": "The machine does NOT mark that can, marks the cell NG and returns it to the tray. Check the LocateCan Flow, search area and SET MASTER of the nozzle named in the alarm detail."
+    },
+    "5005": {
+      "level": "Warning",
+      "vi": "Điểm teach thiếu toạ độ — dừng chu trình",
+      "en": "Teach point incomplete — cycle stopped",
+      "cause": "Điểm Pick/CAM/Laser của chu trình chưa teach hoặc thiếu trục (X, Y, Z).",
+      "remedy": "Trang Teaching: teach đủ Pick Tray1/2 Row 1 + Last row (X, Y, Z), CAM N1/N7 (X, Z), Laser N1/N7 (X, Z) rồi chạy lại.",
+      "causeEn": "A Pick/CAM/Laser point of the cycle is not taught or lacks an axis (X, Y, Z).",
+      "remedyEn": "Teaching page: teach Pick Tray1/2 Row 1 + Last row (X, Y, Z), CAM N1/N7 (X, Z) and Laser N1/N7 (X, Z), then restart."
+    },
+    "5006": {
+      "level": "Warning",
+      "vi": "Vision không thấy can trên nozzle — ô NG",
+      "en": "Vision: can not found on nozzle — cell NG",
+      "cause": "Flow LocateCan không tìm thấy can (Found = 0), echo sai, hoặc Flow báo lỗi/quá giờ ở nozzle nêu trong chi tiết alarm.",
+      "remedy": "Máy không khắc can đó, đánh dấu ô NG và trả về tray. Nếu lặp: kiểm tra đèn CAM, Flow LocateCan, vùng tìm kiếm và điểm CAM N1/N7 (Teaching).",
+      "causeEn": "LocateCan Flow did not find the can (Found = 0), echo mismatch, or the Flow failed/timed out for the nozzle named in the alarm detail.",
+      "remedyEn": "The machine does not mark that can, marks the cell NG and returns it to the tray. If it repeats: check the CAM light, the LocateCan Flow, search area and the CAM N1/N7 points (Teaching)."
+    },
+    "5010": {
+      "level": "Error",
+      "vi": "NG liên tiếp vượt ngưỡng",
+      "en": "Too many consecutive NG",
+      "cause": "Số sản phẩm NG liên tiếp vượt mức đặt — dấu hiệu hỏng cơ khí, sai teach, hoặc lô hàng lỗi.",
+      "remedy": "Kiểm tra máy và lô hàng trước khi chạy tiếp. Chốt chặn này ngăn máy âm thầm làm hỏng cả tray.",
+      "causeEn": "Consecutive NG count exceeds the limit — mechanical fault, wrong teach, or defective lot.",
+      "remedyEn": "Check the machine and the lot before continuing. This stop keeps the machine from silently ruining a whole tray."
+    },
+    "5020": {
+      "level": "Warning",
+      "vi": "Hết tray — chờ thay tray",
+      "en": "Trays finished, waiting for change",
+      "cause": "Cả hai tray đã khắc hết các hàng (hoặc không có tray) — X/Y đã về vị trí chờ.",
+      "remedy": "Thay tray (cảm biến X005/X006 phải thấy tray) rồi bấm START: máy đặt lại tiến độ và chạy từ hàng 1 của tray 1.",
+      "causeEn": "Both trays have all rows marked (or no tray present) — X/Y moved to standby.",
+      "remedyEn": "Replace the trays (sensors X005/X006 must detect them), then press START: progress resets and the cycle runs from row 1 of tray 1."
+    },
+    "5030": {
+      "level": "Error",
+      "vi": "Nozzle còn giữ can khi chạy lại",
+      "en": "Nozzle still holding a can at restart",
+      "cause": "Van hút của nozzle còn mở từ lần chạy bị cắt ngang — máy không biết trả can về ô nào.",
+      "remedy": "Gỡ can trên nozzle, tắt van ở trang Manual, bấm RESET rồi START lại.",
+      "causeEn": "A nozzle vacuum valve is still on from an interrupted run — the machine does not know which cell the can belongs to.",
+      "remedyEn": "Remove the can from the nozzle, switch the valve off on the Manual page, press RESET, then START again."
+    },
+    "5031": {
+      "level": "Error",
+      "vi": "Không trả được hàng về tray",
+      "en": "Row cannot be returned to the tray",
+      "cause": "Tray bị rút ra khi hàng đang trên nozzle, hoặc trục không tới được điểm Pick của hàng.",
+      "remedy": "Đặt lại tray đúng vị trí, gỡ can trên nozzle nếu cần, bấm RESET rồi chạy lại hàng đó.",
+      "causeEn": "The tray was removed while the row was on the nozzles, or the axes could not reach the row's Pick point.",
+      "remedyEn": "Put the tray back in place, remove cans from the nozzles if needed, press RESET and rerun that row."
+    },
+
+    "6000": {
+      "level": "Error",
+      "vi": "Lưu model thất bại",
+      "en": "Model save failed",
+      "cause": "Không ghi được file model — hết dung lượng, thiếu quyền, hoặc file đang bị khoá.",
+      "remedy": "Kiểm tra dung lượng ổ đĩa và quyền ghi thư mục Model.",
+      "causeEn": "Cannot write the model file — disk full, no permission, or file locked.",
+      "remedyEn": "Check disk space and write permission of the Model folder."
+    },
+    "6001": {
+      "level": "Error",
+      "vi": "File model hỏng",
+      "en": "Model file corrupt",
+      "cause": "Nội dung JSON không đọc được hoặc thiếu trường bắt buộc.",
+      "remedy": "Nạp model khác hoặc khôi phục từ backup. KHÔNG chạy Auto với model chưa xác thực được.",
+      "causeEn": "JSON content unreadable or a required field is missing.",
+      "remedyEn": "Load another model or restore from backup. DO NOT run Auto with an unverified model."
+    },
+    "6002": {
+      "level": "Warning",
+      "vi": "Không lưu được tiến độ chạy máy",
+      "en": "Running data save failed",
+      "cause": "Không ghi được running.json — tiến độ tray sẽ mất nếu tắt máy.",
+      "remedy": "Kiểm tra dung lượng và quyền ghi thư mục Runtime.",
+      "causeEn": "Cannot write running.json — tray progress will be lost if the machine is turned off.",
+      "remedyEn": "Check disk space and write permission of the Runtime folder."
+    }
+  }
+}

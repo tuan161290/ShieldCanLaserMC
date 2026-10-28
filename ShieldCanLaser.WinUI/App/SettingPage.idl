@@ -1,0 +1,8 @@
+namespace ShieldCanLaser
+{
+    [default_interface]
+    runtimeclass SettingPage : Microsoft.UI.Xaml.Controls.UserControl
+    {
+        SettingPage();
+    }
+}

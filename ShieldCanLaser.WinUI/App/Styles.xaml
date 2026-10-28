@@ -1,0 +1,454 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ResourceDictionary
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <!-- ═══════════════════════════════════════════════════════════════════════════
+         Windows 11 LIGHT — 3 lớp (Tuấn 2026-10-06), giữ nguyên tên khoá của bản WPF (Themes\Palette.xaml,
+         Themes\Controls.xaml) để XAML các trang chuyển sang gần như không đổi tên:
+
+           Lớp 0  Background  nền cửa sổ (Mica, không tắt khi mất focus — AppBackdrop): thanh tiêu đề, thanh tab, thanh trạng
+                              thái, khe hở giữa các card.
+           Lớp 1  Card        trắng 50 % trên Mica, viền 1 px, bo 8. Tiêu đề card và các phần bên trong ngăn nhau bằng
+                              ĐƯỜNG KẺ MẢNH 1 px (DividerBrush), không lồng hộp.
+           Lớp 2  Control     #FFFFFF: nút, ô nhập, danh sách — viền 1 px, cạnh dưới đậm hơn, bo 4.
+
+         Ô nhập, ComboBox, CheckBox, thanh cuộn… dùng thẳng control gốc của WinUI 3 (vốn đã là Windows 11),
+         nên phần lớn Controls.xaml của bản WPF không cần chuyển.
+         ═══════════════════════════════════════════════════════════════════════════ -->
+
+    <!-- Lớp 0 -->
+    <SolidColorBrush x:Key="BackgroundBrush" Color="#FFF3F3F3"/>
+    <SolidColorBrush x:Key="BackgroundSecondaryBrush" Color="#FFEEEEEE"/>
+
+    <!-- Lớp 1 -->
+    <!-- Trong mờ để Mica của lớp nền lộ qua (Tuấn 2026-10-06: card đặc #FBFBFB "trắng quá"). Windows 11 gốc dùng
+         #B3FFFFFF (70 %); muốn card đậm/nhạt hơn thì chỉnh hai số đầu (alpha). -->
+    <SolidColorBrush x:Key="CardBrush" Color="#80FFFFFF"/>
+    <SolidColorBrush x:Key="CardSecondaryBrush" Color="#FFF6F6F6"/>
+    <!-- Viền card và đường kẻ: ĐEN TRONG MỜ, không phải xám đặc. Xám đặc #E3E3E3 chỉ tối hơn nền khi nền là Mica xám
+         nhạt; trên Acrylic (thấy hình nền nhiều màu / cửa sổ tối phía sau) nó thành vạch TRẮNG (Tuấn 2026-10-06). Đen 10 %
+         luôn tối hơn thứ nằm dưới một chút, như DividerStrokeColorDefault của Windows 11 (#0F000000, ở đây đậm hơn chút
+         vì card trong mờ). -->
+    <SolidColorBrush x:Key="CardStrokeBrush" Color="#1A000000"/>
+    <SolidColorBrush x:Key="DividerBrush" Color="#1A000000"/>
+
+    <!-- Lớp 2 -->
+    <SolidColorBrush x:Key="ControlFillBrush" Color="#FFFFFFFF"/>
+    <SolidColorBrush x:Key="ControlFillHoverBrush" Color="#FFF9F9F9"/>
+    <SolidColorBrush x:Key="ControlStrokeBrush" Color="#FFE0E0E0"/>
+    <SolidColorBrush x:Key="ControlStrokeSecondaryBrush" Color="#FFC4C4C4"/>
+    <SolidColorBrush x:Key="ControlStrongStrokeBrush" Color="#FF8A8A8A"/>
+    <!-- Viền nút kiểu Windows 11: cạnh dưới đậm hơn, đủ để nút trắng nổi trên card trắng ngà. -->
+    <LinearGradientBrush x:Key="ControlElevationStrokeBrush" StartPoint="0,0" EndPoint="0,1">
+        <GradientStop Offset="0" Color="#FFE0E0E0"/>
+        <GradientStop Offset="0.92" Color="#FFE0E0E0"/>
+        <GradientStop Offset="1" Color="#FFC4C4C4"/>
+    </LinearGradientBrush>
+
+    <!-- Phủ nhẹ khi hover/nhấn trên phần tử không phải control (tab, dòng danh sách) -->
+    <SolidColorBrush x:Key="SubtleHoverBrush" Color="#0A000000"/>
+    <SolidColorBrush x:Key="SubtlePressedBrush" Color="#06000000"/>
+    <SolidColorBrush x:Key="SubtleSelectedBrush" Color="#0D000000"/>
+
+    <!-- Popup / hộp thoại -->
+    <SolidColorBrush x:Key="SurfaceBrush" Color="#FFFFFFFF"/>
+    <SolidColorBrush x:Key="SmokeBrush" Color="#4D000000"/>
+
+    <!-- Accent -->
+    <SolidColorBrush x:Key="AccentBrush" Color="#FF005FB8"/>
+    <SolidColorBrush x:Key="AccentFillBrush" Color="#FF005FB8"/>
+    <SolidColorBrush x:Key="AccentTextBrush" Color="#FF003E92"/>
+    <SolidColorBrush x:Key="TextOnAccentBrush" Color="White"/>
+
+    <!-- Text -->
+    <SolidColorBrush x:Key="TextPrimaryBrush" Color="#E4000000"/>
+    <SolidColorBrush x:Key="TextSecondaryBrush" Color="#9E000000"/>
+    <SolidColorBrush x:Key="TextTertiaryBrush" Color="#72000000"/>
+    <SolidColorBrush x:Key="TextDisabledBrush" Color="#5C000000"/>
+
+    <!-- Status -->
+    <SolidColorBrush x:Key="SuccessBrush" Color="#FF0F7B0F"/>
+    <SolidColorBrush x:Key="CautionBrush" Color="#FF9D5D00"/>
+    <SolidColorBrush x:Key="CriticalBrush" Color="#FFC42B1C"/>
+    <SolidColorBrush x:Key="SuccessBackgroundBrush" Color="#FFDFF6DD"/>
+    <SolidColorBrush x:Key="CautionBackgroundBrush" Color="#FFFFF4CE"/>
+    <SolidColorBrush x:Key="CriticalBackgroundBrush" Color="#FFFDE7E9"/>
+    <SolidColorBrush x:Key="InfoBarWarningStrokeBrush" Color="#FFF0E1AE"/>
+    <!-- "Tắt/không hoạt động" trung tính — KHÔNG dùng đỏ (dành cho lỗi) hay xanh dương (dễ lẫn với đang chọn). -->
+    <SolidColorBrush x:Key="StatusOffBrush" Color="#FF5C5C5C"/>
+
+    <!-- Palette nghiệp vụ — màu trạng thái máy/sản phẩm, giữ nguyên -->
+    <SolidColorBrush x:Key="CustomLightGreenBrush" Color="#FF86C691"/>
+    <SolidColorBrush x:Key="CustomDarkGreenBrush" Color="#FF389853"/>
+    <SolidColorBrush x:Key="CustomLightRedBrush" Color="#FFE94949"/>
+    <SolidColorBrush x:Key="CustomLightBlueBrush" Color="#FF4E6D9C"/>
+    <SolidColorBrush x:Key="CustomLightYellowBrush" Color="#FFFFF4CE"/>
+    <SolidColorBrush x:Key="NotUseBrush" Color="#FF464646"/>
+    <SolidColorBrush x:Key="BypassBrush" Color="#FFA5A5A5"/>
+    <SolidColorBrush x:Key="VisionOkBrush" Color="#FFC8EBC8"/>
+    <!-- Ô sơ đồ tray trang Main (như TrayCell*Brush của ShieldCANAssy, Themes/Palette.xaml): trống trắng, có hàng xanh nhạt,
+         đang làm vàng, OK / NG theo palette nghiệp vụ, tray vắng xám. -->
+    <SolidColorBrush x:Key="TrayCellEmptyBrush" Color="#FFFFFFFF"/>
+    <SolidColorBrush x:Key="TrayCellLoadedBrush" Color="#FFCFE3F7"/>
+    <SolidColorBrush x:Key="TrayCellProcessingBrush" Color="#FFFFE080"/>
+    <SolidColorBrush x:Key="TrayCellOkBrush" Color="#FF86C691"/>
+    <SolidColorBrush x:Key="TrayCellNgBrush" Color="#FFE94949"/>
+    <SolidColorBrush x:Key="TrayCellSkippedBrush" Color="#FFA5A5A5"/>
+
+    <!-- Màu nút trạng thái "đang BẬT": tô đặc + chữ trắng. Quầng sáng (glow) đi kèm do ui::SetTint vẽ. -->
+    <SolidColorBrush x:Key="GreenOnBrush" Color="#FF198754"/>
+    <SolidColorBrush x:Key="RedOnBrush" Color="#FFC42B1C"/>
+    <SolidColorBrush x:Key="CautionOnBrush" Color="#FFD35400"/>
+    <SolidColorBrush x:Key="BlueOnBrush" Color="#FF005FB8"/>
+    <SolidColorBrush x:Key="LimeOnBrush" Color="#FF5E9E10"/>
+
+    <FontFamily x:Key="SegoeUI">Segoe UI</FontFamily>
+    <FontFamily x:Key="SegoeIcons">Segoe Fluent Icons, Segoe MDL2 Assets</FontFamily>
+    <!-- Font mặc định của mọi control WinUI: Segoe UI thường, không dùng "Segoe UI Variable". -->
+    <FontFamily x:Key="ContentControlThemeFontFamily">Segoe UI</FontFamily>
+
+    <!-- ── Kiểu chữ dùng chung ── -->
+    <Style x:Key="SectionHeaderStyle" TargetType="TextBlock">
+        <Setter Property="FontSize" Value="14"/>
+        <Setter Property="FontWeight" Value="SemiBold"/>
+        <Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}"/>
+        <Setter Property="VerticalAlignment" Value="Center"/>
+    </Style>
+    <Style x:Key="SubHeaderStyle" TargetType="TextBlock">
+        <Setter Property="FontSize" Value="13"/>
+        <Setter Property="FontWeight" Value="SemiBold"/>
+        <Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}"/>
+        <Setter Property="Margin" Value="0,0,0,6"/>
+    </Style>
+    <Style x:Key="CaptionStyle" TargetType="TextBlock">
+        <Setter Property="FontSize" Value="12"/>
+        <Setter Property="Foreground" Value="{StaticResource TextSecondaryBrush}"/>
+    </Style>
+    <Style x:Key="HintStyle" TargetType="TextBlock">
+        <Setter Property="FontSize" Value="12"/>
+        <Setter Property="TextWrapping" Value="Wrap"/>
+        <Setter Property="Foreground" Value="{StaticResource TextSecondaryBrush}"/>
+        <Setter Property="Margin" Value="0,0,0,8"/>
+    </Style>
+    <Style x:Key="InfoBarTextStyle" TargetType="TextBlock">
+        <Setter Property="FontSize" Value="13"/>
+        <Setter Property="TextWrapping" Value="Wrap"/>
+        <Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}"/>
+        <Setter Property="VerticalAlignment" Value="Center"/>
+    </Style>
+
+    <!-- ═══════════ LỚP 1 — CARD ═══════════
+         Card có tiêu đề (GroupBox của bản WPF) viết thành:
+           <Border Style="{StaticResource CardBorderStyle}" Padding="0">
+             <Grid> hàng 0: <Border Style="{StaticResource CardHeaderStyle}"><TextBlock Style="{StaticResource SectionHeaderStyle}" .../></Border>
+                    hàng 1: <Border Style="{StaticResource DividerStyle}"/>
+                    hàng 2: nội dung, Margin="12" (Margin="0" cho danh sách/khung ảnh chạy sát mép card) -->
+    <Style x:Key="CardBorderStyle" TargetType="Border">
+        <Setter Property="Background" Value="{StaticResource CardBrush}"/>
+        <Setter Property="BorderBrush" Value="{StaticResource CardStrokeBrush}"/>
+        <Setter Property="BorderThickness" Value="1"/>
+        <Setter Property="CornerRadius" Value="8"/>
+        <Setter Property="Padding" Value="12"/>
+    </Style>
+    <Style x:Key="CardHeaderStyle" TargetType="Border">
+        <Setter Property="MinHeight" Value="44"/>
+        <Setter Property="Padding" Value="12,0"/>
+    </Style>
+    <!-- Đường kẻ ngang 1 px, chạy hết bề ngang phần tử chứa nó -->
+    <Style x:Key="DividerStyle" TargetType="Border">
+        <Setter Property="Height" Value="1"/>
+        <Setter Property="Background" Value="{StaticResource DividerBrush}"/>
+    </Style>
+    <!-- Đường kẻ ngăn các phần TRONG card có Padding 12 — bù lề để chạy hết bề ngang card -->
+    <Style x:Key="CardDividerStyle" TargetType="Border">
+        <Setter Property="Height" Value="1"/>
+        <Setter Property="Margin" Value="-12,12"/>
+        <Setter Property="Background" Value="{StaticResource DividerBrush}"/>
+    </Style>
+    <!-- Đường kẻ thụt lề (không chạy hết card) -->
+    <Style x:Key="InsetDividerStyle" TargetType="Border">
+        <Setter Property="Height" Value="1"/>
+        <Setter Property="Margin" Value="0,8"/>
+        <Setter Property="Background" Value="{StaticResource DividerBrush}"/>
+    </Style>
+    <Style x:Key="VerticalDividerStyle" TargetType="Border">
+        <Setter Property="Width" Value="1"/>
+        <Setter Property="Background" Value="{StaticResource DividerBrush}"/>
+    </Style>
+
+    <!-- Dải cảnh báo kiểu InfoBar Windows 11 -->
+    <Style x:Key="InfoBarWarningStyle" TargetType="Border">
+        <Setter Property="Background" Value="{StaticResource CautionBackgroundBrush}"/>
+        <Setter Property="BorderBrush" Value="{StaticResource InfoBarWarningStrokeBrush}"/>
+        <Setter Property="BorderThickness" Value="1"/>
+        <Setter Property="CornerRadius" Value="4"/>
+        <Setter Property="Padding" Value="12,8"/>
+    </Style>
+    <Style x:Key="InfoBarWarningIconStyle" TargetType="FontIcon">
+        <Setter Property="Glyph" Value="&#xE7BA;"/>
+        <Setter Property="FontSize" Value="16"/>
+        <Setter Property="Foreground" Value="{StaticResource CautionBrush}"/>
+        <Setter Property="Margin" Value="0,1,10,0"/>
+        <Setter Property="VerticalAlignment" Value="Top"/>
+    </Style>
+
+    <!-- ═══════════ LỚP 2 — CONTROL ═══════════ -->
+
+    <!-- ==== Nút ====
+         Nền trắng + viền elevation, bo 4. Hover/nhấn phủ một lớp mờ (Overlay) thay vì đổi Background: rất
+         nhiều nút được tô Background theo trạng thái thật (SVO on, AUTO, RESET có alarm…) bằng ui::SetTint,
+         đổi Background lúc hover sẽ che mất màu đó. GlowHost là chỗ ui::SetTint gắn quầng sáng của nút đang BẬT.
+         MinHeight 36 (Tuấn báo nút quá nhỏ 2026-09-11). -->
+    <Style x:Key="FlatButtonStyle" TargetType="Button">
+        <Setter Property="Background" Value="{StaticResource ControlFillBrush}"/>
+        <Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}"/>
+        <Setter Property="BorderBrush" Value="{StaticResource ControlElevationStrokeBrush}"/>
+        <Setter Property="BorderThickness" Value="1"/>
+        <Setter Property="Padding" Value="11,5"/>
+        <Setter Property="FontFamily" Value="{StaticResource SegoeUI}"/>
+        <Setter Property="FontSize" Value="14"/>
+        <Setter Property="FontWeight" Value="Normal"/>
+        <Setter Property="MinHeight" Value="36"/>
+        <Setter Property="CornerRadius" Value="4"/>
+        <Setter Property="HorizontalContentAlignment" Value="Center"/>
+        <Setter Property="VerticalContentAlignment" Value="Center"/>
+        <Setter Property="UseSystemFocusVisuals" Value="True"/>
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="Button">
+                    <Grid x:Name="RootGrid">
+                        <Border x:Name="GlowHost"/>
+                        <Border x:Name="Bd" Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}"
+                                CornerRadius="{TemplateBinding CornerRadius}"/>
+                        <Border x:Name="Overlay" Background="Transparent" CornerRadius="{TemplateBinding CornerRadius}"/>
+                        <ContentPresenter x:Name="ContentPresenter"
+                                          Content="{TemplateBinding Content}"
+                                          ContentTemplate="{TemplateBinding ContentTemplate}"
+                                          Foreground="{TemplateBinding Foreground}"
+                                          Margin="{TemplateBinding Padding}"
+                                          HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
+                                          VerticalAlignment="{TemplateBinding VerticalContentAlignment}"
+                                          AutomationProperties.AccessibilityView="Raw"/>
+                        <VisualStateManager.VisualStateGroups>
+                            <VisualStateGroup x:Name="CommonStates">
+                                <VisualState x:Name="Normal"/>
+                                <VisualState x:Name="PointerOver">
+                                    <VisualState.Setters>
+                                        <Setter Target="Overlay.Background" Value="#0A000000"/>
+                                    </VisualState.Setters>
+                                </VisualState>
+                                <VisualState x:Name="Pressed">
+                                    <VisualState.Setters>
+                                        <Setter Target="Overlay.Background" Value="#14000000"/>
+                                        <Setter Target="ContentPresenter.Opacity" Value="0.8"/>
+                                    </VisualState.Setters>
+                                </VisualState>
+                                <VisualState x:Name="Disabled">
+                                    <VisualState.Setters>
+                                        <Setter Target="RootGrid.Opacity" Value="0.45"/>
+                                    </VisualState.Setters>
+                                </VisualState>
+                            </VisualStateGroup>
+                        </VisualStateManager.VisualStateGroups>
+                    </Grid>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <!-- Style mặc định cho mọi Button -->
+    <Style TargetType="Button" BasedOn="{StaticResource FlatButtonStyle}"/>
+
+    <!-- Nút hành động chính -->
+    <Style x:Key="PrimaryButton" TargetType="Button" BasedOn="{StaticResource FlatButtonStyle}">
+        <Setter Property="Background" Value="{StaticResource AccentFillBrush}"/>
+        <Setter Property="BorderBrush" Value="{StaticResource AccentFillBrush}"/>
+        <Setter Property="Foreground" Value="{StaticResource TextOnAccentBrush}"/>
+        <Setter Property="FontWeight" Value="SemiBold"/>
+    </Style>
+
+    <!-- ==== Tab điều hướng (Main/Manual/…) — nằm trên lớp nền, kiểu SelectorBar Windows 11 ====
+         Tab đang chọn (IsChecked): chữ đậm màu + vạch accent ngắn bo tròn dưới chữ. Trạng thái chọn do
+         MainWindow đặt; độ đậm nhạt của chữ đổi bằng Opacity chứ không đổi Foreground, để tab Alarm còn tự
+         đặt được chữ trắng khi có alarm. -->
+    <Style x:Key="NavTabStyle" TargetType="ToggleButton">
+        <Setter Property="Background" Value="Transparent"/>
+        <Setter Property="Foreground" Value="#FF000000"/>
+        <Setter Property="BorderThickness" Value="0"/>
+        <Setter Property="FontFamily" Value="{StaticResource SegoeUI}"/>
+        <Setter Property="FontSize" Value="15"/>
+        <Setter Property="FontWeight" Value="SemiBold"/>
+        <Setter Property="Padding" Value="18,0"/>
+        <Setter Property="Height" Value="44"/>
+        <Setter Property="MinWidth" Value="0"/>
+        <Setter Property="Margin" Value="0,0,2,0"/>
+        <Setter Property="UseSystemFocusVisuals" Value="True"/>
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="ToggleButton">
+                    <Grid x:Name="RootGrid" Background="Transparent">
+                        <Border x:Name="Bd" Background="Transparent" CornerRadius="4" Margin="0,4"/>
+                        <ContentPresenter x:Name="ContentPresenter" Opacity="0.62"
+                                          Content="{TemplateBinding Content}"
+                                          Foreground="{TemplateBinding Foreground}"
+                                          HorizontalAlignment="Center" VerticalAlignment="Center"
+                                          Margin="{TemplateBinding Padding}"/>
+                        <Border x:Name="Indicator" Height="3" Width="20" VerticalAlignment="Bottom" HorizontalAlignment="Center"
+                                Background="{StaticResource AccentBrush}" CornerRadius="1.5" Margin="0,0,0,3" Visibility="Collapsed"/>
+                        <VisualStateManager.VisualStateGroups>
+                            <VisualStateGroup x:Name="CommonStates">
+                                <VisualState x:Name="Normal"/>
+                                <VisualState x:Name="PointerOver">
+                                    <VisualState.Setters>
+                                        <Setter Target="Bd.Background" Value="#0A000000"/>
+                                    </VisualState.Setters>
+                                </VisualState>
+                                <VisualState x:Name="Pressed">
+                                    <VisualState.Setters>
+                                        <Setter Target="Bd.Background" Value="#06000000"/>
+                                    </VisualState.Setters>
+                                </VisualState>
+                                <VisualState x:Name="Disabled">
+                                    <VisualState.Setters>
+                                        <Setter Target="RootGrid.Opacity" Value="0.45"/>
+                                    </VisualState.Setters>
+                                </VisualState>
+                                <VisualState x:Name="Checked">
+                                    <VisualState.Setters>
+                                        <Setter Target="ContentPresenter.Opacity" Value="0.9"/>
+                                        <Setter Target="Indicator.Visibility" Value="Visible"/>
+                                    </VisualState.Setters>
+                                </VisualState>
+                                <VisualState x:Name="CheckedPointerOver">
+                                    <VisualState.Setters>
+                                        <Setter Target="Bd.Background" Value="#0A000000"/>
+                                        <Setter Target="ContentPresenter.Opacity" Value="0.9"/>
+                                        <Setter Target="Indicator.Visibility" Value="Visible"/>
+                                    </VisualState.Setters>
+                                </VisualState>
+                                <VisualState x:Name="CheckedPressed">
+                                    <VisualState.Setters>
+                                        <Setter Target="Bd.Background" Value="#06000000"/>
+                                        <Setter Target="ContentPresenter.Opacity" Value="0.9"/>
+                                        <Setter Target="Indicator.Visibility" Value="Visible"/>
+                                    </VisualState.Setters>
+                                </VisualState>
+                                <VisualState x:Name="CheckedDisabled">
+                                    <VisualState.Setters>
+                                        <Setter Target="RootGrid.Opacity" Value="0.45"/>
+                                        <Setter Target="Indicator.Visibility" Value="Visible"/>
+                                    </VisualState.Setters>
+                                </VisualState>
+                            </VisualStateGroup>
+                        </VisualStateManager.VisualStateGroups>
+                    </Grid>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <!-- ==== Mục điều hướng dọc trong trang (Setting, EtherCAT) — cột trái kiểu ứng dụng Settings của Windows 11 ====
+         Mục đang chọn: nền xám nhạt + vạch accent dọc bo tròn ở mép trái. IsChecked do trang đặt (bấm lại mục đang
+         chọn không bỏ chọn được). Nội dung: biểu tượng Segoe Fluent + chữ (xem SettingPage.xaml). -->
+    <Style x:Key="SideNavItemStyle" TargetType="ToggleButton">
+        <Setter Property="Background" Value="Transparent"/>
+        <Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}"/>
+        <Setter Property="BorderThickness" Value="0"/>
+        <Setter Property="FontFamily" Value="{StaticResource SegoeUI}"/>
+        <Setter Property="FontSize" Value="14"/>
+        <Setter Property="Padding" Value="14,0,8,0"/>
+        <Setter Property="Height" Value="40"/>
+        <Setter Property="HorizontalAlignment" Value="Stretch"/>
+        <Setter Property="HorizontalContentAlignment" Value="Left"/>
+        <Setter Property="Margin" Value="0,0,0,2"/>
+        <Setter Property="UseSystemFocusVisuals" Value="True"/>
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="ToggleButton">
+                    <Grid x:Name="RootGrid" Background="Transparent">
+                        <Border x:Name="Bd" Background="Transparent" CornerRadius="4"/>
+                        <ContentPresenter x:Name="ContentPresenter"
+                                          Content="{TemplateBinding Content}"
+                                          Foreground="{TemplateBinding Foreground}"
+                                          HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}" VerticalAlignment="Center"
+                                          Margin="{TemplateBinding Padding}"/>
+                        <Border x:Name="Indicator" Width="3" Height="16" HorizontalAlignment="Left" VerticalAlignment="Center"
+                                Background="{StaticResource AccentBrush}" CornerRadius="1.5" Visibility="Collapsed"/>
+                        <VisualStateManager.VisualStateGroups>
+                            <VisualStateGroup x:Name="CommonStates">
+                                <VisualState x:Name="Normal"/>
+                                <VisualState x:Name="PointerOver">
+                                    <VisualState.Setters>
+                                        <Setter Target="Bd.Background" Value="#0A000000"/>
+                                    </VisualState.Setters>
+                                </VisualState>
+                                <VisualState x:Name="Pressed">
+                                    <VisualState.Setters>
+                                        <Setter Target="Bd.Background" Value="#06000000"/>
+                                    </VisualState.Setters>
+                                </VisualState>
+                                <VisualState x:Name="Disabled">
+                                    <VisualState.Setters>
+                                        <Setter Target="RootGrid.Opacity" Value="0.45"/>
+                                    </VisualState.Setters>
+                                </VisualState>
+                                <VisualState x:Name="Checked">
+                                    <VisualState.Setters>
+                                        <Setter Target="Bd.Background" Value="#0F000000"/>
+                                        <Setter Target="Indicator.Visibility" Value="Visible"/>
+                                    </VisualState.Setters>
+                                </VisualState>
+                                <VisualState x:Name="CheckedPointerOver">
+                                    <VisualState.Setters>
+                                        <Setter Target="Bd.Background" Value="#14000000"/>
+                                        <Setter Target="Indicator.Visibility" Value="Visible"/>
+                                    </VisualState.Setters>
+                                </VisualState>
+                                <VisualState x:Name="CheckedPressed">
+                                    <VisualState.Setters>
+                                        <Setter Target="Bd.Background" Value="#0A000000"/>
+                                        <Setter Target="Indicator.Visibility" Value="Visible"/>
+                                    </VisualState.Setters>
+                                </VisualState>
+                                <VisualState x:Name="CheckedDisabled">
+                                    <VisualState.Setters>
+                                        <Setter Target="RootGrid.Opacity" Value="0.45"/>
+                                        <Setter Target="Indicator.Visibility" Value="Visible"/>
+                                    </VisualState.Setters>
+                                </VisualState>
+                            </VisualStateGroup>
+                        </VisualStateManager.VisualStateGroups>
+                    </Grid>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+    <!-- Biểu tượng của mục điều hướng dọc -->
+    <Style x:Key="SideNavIconStyle" TargetType="FontIcon">
+        <Setter Property="FontFamily" Value="{StaticResource SegoeIcons}"/>
+        <Setter Property="FontSize" Value="16"/>
+        <Setter Property="Margin" Value="0,0,12,0"/>
+        <Setter Property="VerticalAlignment" Value="Center"/>
+    </Style>
+    <!-- Một dòng cài đặt kiểu Windows 11: tên + chú thích bên trái, ô nhập bên phải; các dòng ngăn bằng đường kẻ mảnh -->
+    <Style x:Key="SettingRowTitleStyle" TargetType="TextBlock">
+        <Setter Property="FontSize" Value="14"/>
+        <Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}"/>
+    </Style>
+    <Style x:Key="SettingRowCaptionStyle" TargetType="TextBlock">
+        <Setter Property="FontSize" Value="12"/>
+        <Setter Property="TextWrapping" Value="Wrap"/>
+        <Setter Property="Foreground" Value="{StaticResource TextSecondaryBrush}"/>
+        <Setter Property="Margin" Value="0,2,0,0"/>
+    </Style>
+
+    <!-- Ô nhập: giữ control gốc WinUI, chỉ thống nhất cỡ chữ với bản WPF -->
+    <Style TargetType="TextBox" BasedOn="{StaticResource DefaultTextBoxStyle}">
+        <Setter Property="FontSize" Value="13"/>
+        <Setter Property="MinHeight" Value="32"/>
+    </Style>
+
+</ResourceDictionary>

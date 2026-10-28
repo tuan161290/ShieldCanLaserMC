@@ -1,0 +1,87 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <!--
+    Lõi máy: C++20 thuần, không WinRT/XAML — EtherCAT (SOEM + luồng thời gian thực), dữ liệu, alarm,
+    điều khiển, vision. Thư viện tĩnh để app WinUI và CoreTests (console) dùng CHUNG một bộ mã.
+    File nguồn lấy theo wildcard: thêm file .cpp vào thư mục là đủ, không phải sửa project.
+  -->
+  <ItemGroup Label="ProjectConfigurations">
+    <ProjectConfiguration Include="Debug|x64">
+      <Configuration>Debug</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Release|x64">
+      <Configuration>Release</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
+  </ItemGroup>
+  <PropertyGroup Label="Globals">
+    <ProjectGuid>{5A0E7C11-3B6D-4E52-9C1A-6F2D8B4E1A02}</ProjectGuid>
+    <Keyword>Win32Proj</Keyword>
+    <RootNamespace>Core</RootNamespace>
+    <WindowsTargetPlatformVersion>10.0</WindowsTargetPlatformVersion>
+    <!-- VisionMaster 4.4 C++ SDK -->
+    <VmSdkRoot Condition="'$(VmSdkRoot)'==''">C:\Program Files\VisionMaster4.4.0\Development\V4.x</VmSdkRoot>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
+  <PropertyGroup Label="Configuration">
+    <ConfigurationType>StaticLibrary</ConfigurationType>
+    <PlatformToolset>v145</PlatformToolset>
+    <CharacterSet>Unicode</CharacterSet>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)'=='Debug'" Label="Configuration">
+    <UseDebugLibraries>true</UseDebugLibraries>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)'=='Release'" Label="Configuration">
+    <UseDebugLibraries>false</UseDebugLibraries>
+    <WholeProgramOptimization>false</WholeProgramOptimization>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
+  <PropertyGroup>
+    <RootDir>$(MSBuildThisFileDirectory)..\</RootDir>
+    <SoemDir>$(RootDir)ThirdParty\soem\</SoemDir>
+    <OutDir>$(RootDir)build\$(Platform)\$(Configuration)\lib\</OutDir>
+    <IntDir>$(RootDir)build\obj\$(Platform)\$(Configuration)\Core\</IntDir>
+  </PropertyGroup>
+  <ItemDefinitionGroup>
+    <ClCompile>
+      <LanguageStandard>stdcpp20</LanguageStandard>
+      <ConformanceMode>true</ConformanceMode>
+      <!-- /EHs: hàm xuất của SDK VisionMaster khai báo extern "C" nhưng vẫn ném CVmException; với /EHsc
+           trình biên dịch bỏ luôn khối catch quanh các lời gọi đó (xem BAN-GIAO-VM-WinUI3.md mục 7). -->
+      <ExceptionHandling>SyncCThrow</ExceptionHandling>
+      <AdditionalOptions>%(AdditionalOptions) /utf-8 /bigobj</AdditionalOptions>
+      <AdditionalIncludeDirectories>$(MSBuildThisFileDirectory);$(RootDir)ThirdParty;$(SoemDir)include;$(SoemDir)osal;$(SoemDir)osal\win32;$(SoemDir)oshw\win32;$(SoemDir)oshw\win32\wpcap\Include;$(VmSdkRoot)\Includes;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <PreprocessorDefinitions>NOMINMAX;WIN32_LEAN_AND_MEAN;_CRT_SECURE_NO_WARNINGS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <WarningLevel>Level3</WarningLevel>
+      <DisableSpecificWarnings>4819;4828;%(DisableSpecificWarnings)</DisableSpecificWarnings>
+      <SDLCheck>false</SDLCheck>
+      <!-- /Z7: debug info nằm trong .obj. Thư mục .obj theo từng thư mục nguồn khiến MSBuild chạy nhiều cl.exe song song; dùng chung một .pdb thì chúng giành nhau (C1041). -->
+      <DebugInformationFormat>OldStyle</DebugInformationFormat>
+      <MultiProcessorCompilation>true</MultiProcessorCompilation>
+      <!-- Hai file trùng tên ở hai thư mục (vd. AxisConfig.cpp) không được đè .obj của nhau. -->
+      <ObjectFileName>$(IntDir)%(RelativeDir)</ObjectFileName>
+    </ClCompile>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)'=='Debug'">
+    <ClCompile>
+      <Optimization>Disabled</Optimization>
+      <PreprocessorDefinitions>_DEBUG;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+    </ClCompile>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)'=='Release'">
+    <ClCompile>
+      <Optimization>MaxSpeed</Optimization>
+      <PreprocessorDefinitions>NDEBUG;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+    </ClCompile>
+  </ItemDefinitionGroup>
+  <ItemGroup>
+    <ClCompile Include="**\*.cpp" />
+    <ClInclude Include="**\*.h" />
+    <ClCompile Include="$(RootDir)ThirdParty\pugixml\pugixml.cpp">
+      <ObjectFileName>$(IntDir)ThirdParty\</ObjectFileName>
+      <ConformanceMode>false</ConformanceMode>
+    </ClCompile>
+  </ItemGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
+</Project>

@@ -1,0 +1,171 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Window
+    x:Class="ShieldCanLaser.MainWindow"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:local="using:ShieldCanLaser"
+    Title="Shield CAN Laser Marking MC">
+
+    <!-- Lớp 0 = Acrylic Thin (làm mờ hình nền / cửa sổ phía sau), KHÔNG tắt khi cửa sổ mất focus (cách của app GFP Test UI).
+         Tuấn 2026-10-06 từng chọn Mica, nhưng Mica chỉ có trên Windows 11 — máy Windows 10 mất hẳn nền (2026-10-18), nên dùng
+         Acrylic. Tắt hiệu ứng trong suốt / tiết kiệm pin / RDP thì tự về màu đặc. -->
+    <Window.SystemBackdrop>
+        <local:AppBackdrop UseAcrylic="True"/>
+    </Window.SystemBackdrop>
+
+    <!-- ══════════ Bố cục 3 lớp Windows 11 ══════════
+         Lớp nền (Mica): thanh tiêu đề, thanh tab, thanh trạng thái và khe giữa các card — ngăn nhau bằng
+         đường kẻ mảnh 1 px. Mỗi trang đặt CARD lên nền; control nằm trên card.
+         ContentControl bọc ngoài chỉ để đặt font cho cả cây (Panel không có FontFamily). -->
+    <ContentControl x:Name="FontHost" FontFamily="Segoe UI" IsTabStop="False"
+                    HorizontalContentAlignment="Stretch" VerticalContentAlignment="Stretch">
+        <Grid x:Name="Root" Loaded="OnRootLoaded">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto"/>   <!-- Thanh tiêu đề -->
+                <RowDefinition Height="Auto"/>   <!-- Thanh tab -->
+                <RowDefinition Height="*"/>      <!-- Trang -->
+                <RowDefinition Height="Auto"/>   <!-- Thanh trạng thái -->
+            </Grid.RowDefinitions>
+
+            <!-- ══════════ Thanh tiêu đề ══════════
+                 Cả dải là vùng kéo cửa sổ (SetTitleBar). Ba nút cửa sổ do hệ thống vẽ ở góc phải — cột cuối
+                 để trống cho chúng. Màu đèn tháp (Status.TowerLamp — nguồn sự thật, cùng màu đèn tháp vật lý)
+                 hiện ở nhãn trạng thái cạnh tên máy, không nhuộm cả thanh. -->
+            <Grid x:Name="TitleBarArea" Grid.Row="0" Height="60" Background="Transparent"
+                  BorderBrush="{StaticResource DividerBrush}" BorderThickness="0,0,0,1">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="146"/>
+                </Grid.ColumnDefinitions>
+
+                <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="16,0,16,0">
+                    <Image Source="ms-appx:///Assets/LogoActro.png" Height="32" Margin="0,0,16,0"/>
+                    <StackPanel VerticalAlignment="Center">
+                        <TextBlock x:Name="MachineNameText" FontSize="18" FontWeight="SemiBold"/>
+                        <TextBlock x:Name="ModelText" FontSize="12" Foreground="{StaticResource TextSecondaryBrush}"/>
+                    </StackPanel>
+                    <!-- Nhãn trạng thái máy — màu đèn tháp. -->
+                    <Border x:Name="StatePill" CornerRadius="13" Padding="10,4,12,4" Margin="20,0,0,0"
+                            VerticalAlignment="Center" BorderThickness="1">
+                        <StackPanel Orientation="Horizontal">
+                            <Ellipse x:Name="StateDot" Width="9" Height="9" VerticalAlignment="Center"/>
+                            <TextBlock x:Name="StateText" Margin="7,0,0,0" FontSize="13" FontWeight="SemiBold"
+                                       VerticalAlignment="Center"/>
+                        </StackPanel>
+                    </Border>
+                </StackPanel>
+
+                <!-- Toạ độ 14 trục — mỗi trục một ô rộng CỐ ĐỊNH (số đổi độ dài không xô lệch cả hàng), ngăn nhau
+                     bằng đường kẻ dọc mảnh. Dựng trong code theo AxisId::All. Nằm trong cột "*" qua Viewbox chỉ-thu-nhỏ:
+                     cửa sổ hẹp thì cả dải co lại cho vừa thay vì bị cắt mất các trục cuối và logo. -->
+                <Viewbox Grid.Column="1" StretchDirection="DownOnly" HorizontalAlignment="Right" VerticalAlignment="Center">
+                    <Border BorderBrush="{StaticResource DividerBrush}" BorderThickness="0,0,1,0">
+                        <StackPanel x:Name="AxisPanel" Orientation="Horizontal"/>
+                    </Border>
+                </Viewbox>
+
+                <Image Grid.Column="3" Source="ms-appx:///Assets/LogoHoyeon.png" Height="40" Margin="16,0,8,0"
+                       VerticalAlignment="Center"/>
+            </Grid>
+
+            <!-- ══════════ Thanh tab ══════════ -->
+            <Grid Grid.Row="1" BorderBrush="{StaticResource DividerBrush}" BorderThickness="0,0,0,1" Padding="12,0">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+
+                <StackPanel Orientation="Horizontal">
+                    <ToggleButton x:Name="TabMain" Content="Main" Style="{StaticResource NavTabStyle}" Click="OnTabClick"/>
+                    <ToggleButton x:Name="TabManual" Content="Manual" Style="{StaticResource NavTabStyle}" Click="OnTabClick"/>
+                    <ToggleButton x:Name="TabTeaching" Content="Teaching" Style="{StaticResource NavTabStyle}" Click="OnTabClick"/>
+                    <ToggleButton x:Name="TabSetting" Content="Setting" Style="{StaticResource NavTabStyle}" Click="OnTabClick"/>
+                    <ToggleButton x:Name="TabEtherCat" Style="{StaticResource NavTabStyle}" Click="OnTabClick">
+                        <StackPanel Orientation="Horizontal" Spacing="6">
+                            <TextBlock Text="EtherCAT"/>
+                            <FontIcon x:Name="EtherCatLock" Glyph="&#xE72E;" FontSize="12" VerticalAlignment="Center"/>
+                        </StackPanel>
+                    </ToggleButton>
+                    <ToggleButton x:Name="TabVisionEdit" Style="{StaticResource NavTabStyle}" Click="OnTabClick">
+                        <StackPanel Orientation="Horizontal" Spacing="6">
+                            <TextBlock Text="Vision Edit"/>
+                            <FontIcon x:Name="VisionEditLock" Glyph="&#xE72E;" FontSize="12" VerticalAlignment="Center"/>
+                        </StackPanel>
+                    </ToggleButton>
+                    <!-- Alarm — có alarm thì nền đỏ + quầng sáng, chữ trắng. Nền/quầng sáng nằm ở hai Border phía
+                         sau nút (nút trong suốt), nên trạng thái hover/chọn của tab vẫn hoạt động như các tab khác. -->
+                    <Grid Margin="0,4" VerticalAlignment="Center">
+                        <Border x:Name="AlarmTabGlow"/>
+                        <Border x:Name="AlarmTabFill" CornerRadius="4"/>
+                        <ToggleButton x:Name="TabAlarm" Content="⚠ Alarm" Height="36" Margin="0"
+                                      Style="{StaticResource NavTabStyle}" Click="OnTabClick"/>
+                    </Grid>
+                </StackPanel>
+
+                <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                    <!-- Phân quyền (Tuấn 2026-10-21): Operator thấy LOGIN; Engineer thấy ENGINEER (xanh), bấm ra menu đổi mật
+                         khẩu / đăng xuất. Tab Vision Edit, EtherCAT mang biểu tượng khoá khi chưa đăng nhập. -->
+                    <Button x:Name="UserButton" VerticalAlignment="Center" Padding="14,5" FontWeight="SemiBold" Click="OnUserClick">
+                        <StackPanel Orientation="Horizontal" Spacing="8">
+                            <FontIcon x:Name="UserIcon" Glyph="&#xE77B;" FontSize="14"/>
+                            <TextBlock x:Name="UserText" Text="LOGIN" VerticalAlignment="Center"/>
+                        </StackPanel>
+                    </Button>
+                    <!-- RESET — cam đặc khi không có alarm, đỏ khi có alarm đang tác động. -->
+                    <Button x:Name="ResetButton" Content="RESET" VerticalAlignment="Center"
+                            Padding="20,5" FontWeight="SemiBold" Click="OnResetClick"/>
+                </StackPanel>
+            </Grid>
+
+            <!-- ══════════ Trang ══════════ Thứ tự khớp enum Section trong MainWindow.xaml.h. -->
+            <Grid x:Name="PageHost" Grid.Row="2" Margin="12">
+                <local:MainPage x:Name="PageMain"/>
+                <local:ManualPage x:Name="PageManual" Visibility="Collapsed"/>
+                <local:TeachingPage x:Name="PageTeaching" Visibility="Collapsed"/>
+                <local:SettingPage x:Name="PageSetting" Visibility="Collapsed"/>
+                <local:EtherCatPage x:Name="PageEtherCat" Visibility="Collapsed"/>
+                <local:VisionEditPage x:Name="PageVisionEdit" Visibility="Collapsed"/>
+                <local:AlarmPage x:Name="PageAlarm" Visibility="Collapsed"/>
+            </Grid>
+
+            <!-- ══════════ Thanh trạng thái ══════════ -->
+            <Grid Grid.Row="3" BorderBrush="{StaticResource DividerBrush}" BorderThickness="0,1,0,0" Padding="16,6">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="*"/>
+                </Grid.ColumnDefinitions>
+
+                <StackPanel Orientation="Horizontal">
+                    <Border x:Name="SimBadge" Background="{StaticResource CautionBackgroundBrush}"
+                            BorderBrush="{StaticResource InfoBarWarningStrokeBrush}" BorderThickness="1"
+                            CornerRadius="4" Padding="8,1" Margin="0,0,4,0" Visibility="Collapsed">
+                        <TextBlock Text="SIMULATION MODE" FontWeight="SemiBold" FontSize="11"
+                                   Foreground="{StaticResource CautionBrush}"/>
+                    </Border>
+
+                    <Ellipse x:Name="MotionLamp" Width="10" Height="10" Margin="14,0,6,0" VerticalAlignment="Center"/>
+                    <TextBlock Text="Motion" FontSize="12" VerticalAlignment="Center"/>
+                    <Ellipse x:Name="IoLamp" Width="10" Height="10" Margin="14,0,6,0" VerticalAlignment="Center"/>
+                    <TextBlock Text="I/O" FontSize="12" VerticalAlignment="Center"/>
+                    <Ellipse x:Name="VisionLamp" Width="10" Height="10" Margin="14,0,6,0" VerticalAlignment="Center"/>
+                    <TextBlock Text="Vision" FontSize="12" VerticalAlignment="Center"/>
+
+                    <!-- Luồng chu kỳ EtherCAT trên core dành riêng: CPU đang dùng + jitter thực đo. Chỉ hiện khi
+                         bus SOEM thật đang mở. -->
+                    <StackPanel x:Name="RtPanel" Orientation="Horizontal" Visibility="Collapsed">
+                        <Border Width="1" Margin="16,2,0,2" Background="{StaticResource DividerBrush}"/>
+                        <Ellipse x:Name="RtLamp" Width="10" Height="10" Margin="14,0,6,0" VerticalAlignment="Center"/>
+                        <TextBlock x:Name="RtText" FontSize="12" VerticalAlignment="Center"/>
+                    </StackPanel>
+                </StackPanel>
+
+                <TextBlock x:Name="DataRootText" Grid.Column="1" Margin="24,0,0,0" FontSize="12"
+                           Foreground="{StaticResource TextSecondaryBrush}" VerticalAlignment="Center"
+                           HorizontalAlignment="Right" TextTrimming="CharacterEllipsis"/>
+            </Grid>
+        </Grid>
+    </ContentControl>
+</Window>

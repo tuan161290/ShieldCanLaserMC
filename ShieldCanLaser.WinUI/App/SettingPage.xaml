@@ -1,0 +1,619 @@
+<?xml version="1.0" encoding="utf-8"?>
+<UserControl
+    x:Class="ShieldCanLaser.SettingPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:local="using:ShieldCanLaser">
+
+    <UserControl.Resources>
+        <!-- Nhãn phía trên ô nhập (Windows 11 "Header" của TextBox) -->
+        <Style x:Key="FieldLabel" TargetType="TextBlock" BasedOn="{StaticResource CaptionStyle}">
+            <Setter Property="Margin" Value="0,0,0,4"/>
+        </Style>
+        <!-- Ô báo cáo chỉ đọc (biến toàn cục / Output Flow): chọn và chép được, không viền -->
+        <Style x:Key="ReportTextStyle" TargetType="TextBlock">
+            <Setter Property="TextWrapping" Value="Wrap"/>
+            <Setter Property="IsTextSelectionEnabled" Value="True"/>
+            <Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}"/>
+        </Style>
+        <!-- Dòng cài đặt: tên + chú thích | ô nhập + đơn vị -->
+        <Style x:Key="SettingRowStyle" TargetType="Grid">
+            <Setter Property="MinHeight" Value="56"/>
+            <Setter Property="Padding" Value="16,10"/>
+            <Setter Property="ColumnSpacing" Value="24"/>
+        </Style>
+        <Style x:Key="RowDividerStyle" TargetType="Border">
+            <Setter Property="Height" Value="1"/>
+            <Setter Property="Background" Value="{StaticResource DividerBrush}"/>
+        </Style>
+        <Style x:Key="ValueBoxStyle" TargetType="TextBox" BasedOn="{StaticResource DefaultTextBoxStyle}">
+            <Setter Property="FontSize" Value="13"/>
+            <Setter Property="MinHeight" Value="32"/>
+            <Setter Property="Width" Value="110"/>
+            <Setter Property="TextAlignment" Value="Right"/>
+            <Setter Property="VerticalAlignment" Value="Center"/>
+        </Style>
+        <Style x:Key="UnitTextStyle" TargetType="TextBlock" BasedOn="{StaticResource CaptionStyle}">
+            <Setter Property="Width" Value="28"/>
+            <Setter Property="Margin" Value="8,0,0,0"/>
+            <Setter Property="VerticalAlignment" Value="Center"/>
+        </Style>
+    </UserControl.Resources>
+
+    <!-- Trang Setting (Tuấn 2026-10-09: chia mục, phần EtherCAT sang trang riêng). Cột trái: các mục kiểu ứng dụng Settings
+         của Windows 11 + nút Lưu system.json dùng chung; cột phải: nội dung mục đang chọn. Mọi ô nhập nạp từ dữ liệu sống khi
+         trang mở / sau Lưu; OnTick không ghi đè chúng. -->
+    <Grid x:Name="Root" Loaded="OnRootLoaded" ColumnSpacing="12">
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="200"/>
+            <ColumnDefinition Width="*"/>
+        </Grid.ColumnDefinitions>
+
+        <!-- ══════════ Cột điều hướng ══════════ -->
+        <Grid>
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="*"/>
+                <RowDefinition Height="Auto"/>
+            </Grid.RowDefinitions>
+            <StackPanel>
+                <ToggleButton x:Name="NavButton0" Tag="0" Style="{StaticResource SideNavItemStyle}" Click="OnNavClick">
+                    <StackPanel Orientation="Horizontal">
+                        <FontIcon Glyph="&#xE713;" Style="{StaticResource SideNavIconStyle}"/>
+                        <TextBlock Text="System"/>
+                    </StackPanel>
+                </ToggleButton>
+                <ToggleButton x:Name="NavButton1" Tag="1" Style="{StaticResource SideNavItemStyle}" Click="OnNavClick">
+                    <StackPanel Orientation="Horizontal">
+                        <FontIcon Glyph="&#xE707;" Style="{StaticResource SideNavIconStyle}"/>
+                        <TextBlock Text="Work Positions"/>
+                    </StackPanel>
+                </ToggleButton>
+                <ToggleButton x:Name="NavButton2" Tag="2" Style="{StaticResource SideNavItemStyle}" Click="OnNavClick">
+                    <StackPanel Orientation="Horizontal">
+                        <FontIcon Glyph="&#xE916;" Style="{StaticResource SideNavIconStyle}"/>
+                        <TextBlock Text="Time Delay"/>
+                    </StackPanel>
+                </ToggleButton>
+                <ToggleButton x:Name="NavButton3" Tag="3" Style="{StaticResource SideNavItemStyle}" Click="OnNavClick">
+                    <StackPanel Orientation="Horizontal">
+                        <FontIcon Glyph="&#xE722;" Style="{StaticResource SideNavIconStyle}"/>
+                        <TextBlock Text="Vision Flow"/>
+                    </StackPanel>
+                </ToggleButton>
+                <ToggleButton x:Name="NavButton4" Tag="4" Style="{StaticResource SideNavItemStyle}" Click="OnNavClick">
+                    <StackPanel Orientation="Horizontal">
+                        <FontIcon Glyph="&#xE8FD;" Style="{StaticResource SideNavIconStyle}"/>
+                        <TextBlock Text="Log"/>
+                    </StackPanel>
+                </ToggleButton>
+            </StackPanel>
+
+            <StackPanel Grid.Row="2" Spacing="6">
+                <Button Content="SAVE" Style="{StaticResource PrimaryButton}" HorizontalAlignment="Stretch" Click="OnSaveClick"/>
+                <TextBlock x:Name="SaveResultText" Style="{StaticResource CaptionStyle}" TextWrapping="Wrap" Visibility="Collapsed"/>
+            </StackPanel>
+        </Grid>
+
+        <!-- ══════════ Nội dung ══════════ -->
+        <Grid Grid.Column="1">
+
+            <!-- ══════════ Hệ thống ══════════ -->
+            <ScrollViewer x:Name="SystemSection" VerticalScrollBarVisibility="Auto">
+                <StackPanel Spacing="8" MaxWidth="980" HorizontalAlignment="Left">
+                    <Border Style="{StaticResource CardBorderStyle}" Padding="0">
+                        <Grid>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="Auto"/>
+                            </Grid.RowDefinitions>
+                            <Border Style="{StaticResource CardHeaderStyle}">
+                                <TextBlock Text="Machine" Style="{StaticResource SectionHeaderStyle}"/>
+                            </Border>
+                            <Border Grid.Row="1" Style="{StaticResource DividerStyle}"/>
+                            <StackPanel Grid.Row="2">
+                                <Grid Style="{StaticResource SettingRowStyle}">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                    </Grid.ColumnDefinitions>
+                                    <StackPanel VerticalAlignment="Center">
+                                        <TextBlock Text="Machine name" Style="{StaticResource SettingRowTitleStyle}"/>
+                                        <TextBlock Style="{StaticResource SettingRowCaptionStyle}" Text="Shown in the title bar."/>
+                                    </StackPanel>
+                                    <TextBox x:Name="MachineNameBox" Grid.Column="1" Width="300" VerticalAlignment="Center"/>
+                                </Grid>
+                                <Border Style="{StaticResource RowDividerStyle}"/>
+                                <Grid Style="{StaticResource SettingRowStyle}">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                    </Grid.ColumnDefinitions>
+                                    <StackPanel VerticalAlignment="Center">
+                                        <TextBlock Text="Machine code" Style="{StaticResource SettingRowTitleStyle}"/>
+                                        <TextBlock Style="{StaticResource SettingRowCaptionStyle}" Text="Asset / line code, shown next to the name. Optional."/>
+                                    </StackPanel>
+                                    <TextBox x:Name="MachineCodeBox" Grid.Column="1" Width="300" VerticalAlignment="Center"/>
+                                </Grid>
+                            </StackPanel>
+                        </Grid>
+                    </Border>
+
+                    <Border Style="{StaticResource CardBorderStyle}" Padding="0">
+                        <Grid>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="Auto"/>
+                            </Grid.RowDefinitions>
+                            <Border Style="{StaticResource CardHeaderStyle}">
+                                <TextBlock Text="Run Mode &amp; Safety" Style="{StaticResource SectionHeaderStyle}"/>
+                            </Border>
+                            <Border Grid.Row="1" Style="{StaticResource DividerStyle}"/>
+                            <StackPanel Grid.Row="2">
+                                <StackPanel Padding="16,10">
+                                    <CheckBox x:Name="SimModeCheck" Content="Simulation mode"/>
+                                    <TextBlock Style="{StaticResource SettingRowCaptionStyle}" Margin="28,0,0,0"
+                                               Text="Simulated axes and IO, no hardware needed. Restart required."/>
+                                    <!-- SystemData.VisionSimulation (mới, không có ở bản WPF): chỉ có nghĩa khi đang mô phỏng — thụt vào
+                                         dưới "Chế độ mô phỏng", mờ đi khi bỏ mô phỏng (UpdateCommandStates). -->
+                                    <CheckBox x:Name="VisionSimCheck" Content="Fake vision (FakeVision) in simulation" Margin="28,8,0,0"/>
+                                    <TextBlock Style="{StaticResource SettingRowCaptionStyle}" Margin="56,0,0,0"
+                                               Text="Off: real VisionMaster is used. On: fake vision results — for PCs without VisionMaster. Restart required."/>
+                                </StackPanel>
+                                <Border Style="{StaticResource RowDividerStyle}"/>
+                                <StackPanel Padding="16,10">
+                                    <CheckBox x:Name="TraySensorsCheck" Content="Tray sensors fitted (X005 / X006)"/>
+                                    <TextBlock Style="{StaticResource SettingRowCaptionStyle}" Margin="28,0,0,0"
+                                               Text="On (default): Auto skips a tray whose sensor is off and refuses START with no tray. Off: both trays are assumed present."/>
+                                </StackPanel>
+                                <Border Style="{StaticResource RowDividerStyle}"/>
+                                <StackPanel Padding="16,10">
+                                    <CheckBox x:Name="AirSensorCheck" Content="Air pressure sensor fitted (X014)"/>
+                                    <TextBlock Style="{StaticResource SettingRowCaptionStyle}" Margin="28,0,0,0"
+                                               Text="Pressure low: alarm 1103, all motion blocked until pressure returns and RESET. Check the X014 lamp on the Manual page before enabling."/>
+                                </StackPanel>
+                                <Border Style="{StaticResource RowDividerStyle}"/>
+                                <StackPanel Padding="16,10">
+                                    <CheckBox x:Name="LightCurtainCheck" Content="Photo safety sensor fitted (X004)"/>
+                                    <TextBlock Style="{StaticResource SettingRowCaptionStyle}" Margin="28,0,0,0"
+                                               Text="Sensor interrupted: all axes stop; in Auto the machine pauses — clear the sensor area, then press START. Check the X004 lamp on the Manual page before enabling."/>
+                                </StackPanel>
+                            </StackPanel>
+                        </Grid>
+                    </Border>
+
+                    <Border Style="{StaticResource CardBorderStyle}" Padding="0">
+                        <Grid>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="Auto"/>
+                            </Grid.RowDefinitions>
+                            <Border Style="{StaticResource CardHeaderStyle}">
+                                <TextBlock Text="Data Folder" Style="{StaticResource SectionHeaderStyle}"/>
+                            </Border>
+                            <Border Grid.Row="1" Style="{StaticResource DividerStyle}"/>
+                            <Grid Grid.Row="2" Style="{StaticResource SettingRowStyle}">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <StackPanel VerticalAlignment="Center">
+                                    <TextBlock x:Name="DataRootText" Style="{StaticResource SettingRowTitleStyle}" TextTrimming="CharacterEllipsis"/>
+                                    <TextBlock x:Name="FallbackRootText" Text="Using fallback folder next to exe (no D: drive)" FontSize="12"
+                                               Foreground="{StaticResource CautionBrush}" Visibility="Collapsed"/>
+                                    <TextBlock x:Name="AlarmCatalogText" Text="alarms.json NOT loaded — alarms will show as raw codes" FontSize="12"
+                                               Foreground="{StaticResource CriticalBrush}" Visibility="Collapsed"/>
+                                </StackPanel>
+                                <Button Grid.Column="1" Content="OPEN FOLDER" Width="130" VerticalAlignment="Center" Click="OnOpenDataFolderClick"/>
+                            </Grid>
+                        </Grid>
+                    </Border>
+                </StackPanel>
+            </ScrollViewer>
+
+            <!-- ══════════ Vị trí làm việc ══════════ Cao độ an toàn Z + vị trí chờ / giới hạn mềm / offset gốc của 3 trục
+                 (bảng dựng theo SystemData.Axes). Bảng dựng trong code (BuildPositionTable), ô ghi thẳng vào AxisConfig sống. -->
+            <ScrollViewer x:Name="PositionSection" VerticalScrollBarVisibility="Auto" Visibility="Collapsed">
+                <StackPanel Spacing="8" MaxWidth="980" HorizontalAlignment="Left">
+                    <Border Style="{StaticResource CardBorderStyle}" Padding="0">
+                        <Grid>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="Auto"/>
+                            </Grid.RowDefinitions>
+                            <Border Style="{StaticResource CardHeaderStyle}">
+                                <TextBlock Text="Z-Axis Safe Height" Style="{StaticResource SectionHeaderStyle}"/>
+                            </Border>
+                            <Border Grid.Row="1" Style="{StaticResource DividerStyle}"/>
+                            <StackPanel Grid.Row="2">
+                                <Grid Style="{StaticResource SettingRowStyle}">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                    </Grid.ColumnDefinitions>
+                                    <StackPanel VerticalAlignment="Center">
+                                        <TextBlock Text="Z_SAFE — nozzle bar Z" Style="{StaticResource SettingRowTitleStyle}"/>
+                                        <TextBlock Style="{StaticResource SettingRowCaptionStyle}"
+                                                   Text="Positive = down. Takes effect on SAVE."/>
+                                    </StackPanel>
+                                    <StackPanel Grid.Column="1" Orientation="Horizontal">
+                                        <TextBox x:Name="ZSafeBox" Style="{StaticResource ValueBoxStyle}" LostFocus="OnZSafeLostFocus"/>
+                                        <TextBlock Text="mm" Style="{StaticResource UnitTextStyle}"/>
+                                    </StackPanel>
+                                </Grid>
+                                <Border Style="{StaticResource RowDividerStyle}"/>
+                                <StackPanel Padding="16,10">
+                                    <CheckBox x:Name="ZSafeInterlockCheck" Content="Z_SAFE interlock for X / Y"/>
+                                    <TextBlock Style="{StaticResource SettingRowCaptionStyle}" Margin="28,0,0,0"
+                                               Text="On (default): X and Y move only when Z is at safe height (nozzle bar lifted clear of the trays, CAM and laser). Disable only after confirming no mechanical collision."/>
+                                </StackPanel>
+                            </StackPanel>
+                        </Grid>
+                    </Border>
+
+                    <Border Style="{StaticResource CardBorderStyle}" Padding="0">
+                        <Grid>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="Auto"/>
+                            </Grid.RowDefinitions>
+                            <Border Style="{StaticResource CardHeaderStyle}">
+                                <TextBlock Text="Standby Position &amp; Soft Limits — X, Y, Z" Style="{StaticResource SectionHeaderStyle}"/>
+                            </Border>
+                            <Border Grid.Row="1" Style="{StaticResource DividerStyle}"/>
+                            <TextBlock Grid.Row="2" Style="{StaticResource HintStyle}" Margin="16,8,16,8"
+                                       Text="Standby: last step of Origin and target of Init; also the waiting position while trays are replaced in Auto. Soft −/+: moves outside the range are blocked; Write limit = written to driver on Connect All Axis. Home offset: coordinate at home."/>
+                            <Border x:Name="PositionTableHost" Grid.Row="3" BorderBrush="{StaticResource DividerBrush}" BorderThickness="0,1,0,0"/>
+                        </Grid>
+                    </Border>
+                </StackPanel>
+            </ScrollViewer>
+
+            <!-- ══════════ Time Delay ══════════ Thời gian chờ / timeout của máy (system.json). Chờ hút / nhả thuộc model —
+                 ở trang Teaching. -->
+            <ScrollViewer x:Name="TimeSection" VerticalScrollBarVisibility="Auto" Visibility="Collapsed">
+                <StackPanel Spacing="8" MaxWidth="980" HorizontalAlignment="Left">
+                    <Border Style="{StaticResource CardBorderStyle}" Padding="0">
+                        <Grid>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="Auto"/>
+                            </Grid.RowDefinitions>
+                            <Border Style="{StaticResource CardHeaderStyle}">
+                                <TextBlock Text="Image Capture" Style="{StaticResource SectionHeaderStyle}"/>
+                            </Border>
+                            <Border Grid.Row="1" Style="{StaticResource DividerStyle}"/>
+                            <StackPanel Grid.Row="2">
+                                <Grid Style="{StaticResource SettingRowStyle}">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                    </Grid.ColumnDefinitions>
+                                    <StackPanel VerticalAlignment="Center">
+                                        <TextBlock Text="Settle delay before capture" Style="{StaticResource SettingRowTitleStyle}"/>
+                                        <TextBlock Style="{StaticResource SettingRowCaptionStyle}"
+                                                   Text="Wait for vibration to settle after the last move before reading encoders and capturing. 0 = off."/>
+                                    </StackPanel>
+                                    <StackPanel Grid.Column="1" Orientation="Horizontal">
+                                        <TextBox x:Name="VisionSettleBox" Style="{StaticResource ValueBoxStyle}"/>
+                                        <TextBlock Text="ms" Style="{StaticResource UnitTextStyle}"/>
+                                    </StackPanel>
+                                </Grid>
+                                <Border Style="{StaticResource RowDividerStyle}"/>
+                                <Grid Style="{StaticResource SettingRowStyle}">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                    </Grid.ColumnDefinitions>
+                                    <StackPanel VerticalAlignment="Center">
+                                        <TextBlock Text="Lamp settle delay before capture" Style="{StaticResource SettingRowTitleStyle}"/>
+                                        <TextBlock Style="{StaticResource SettingRowCaptionStyle}"
+                                                   Text="After the CAM lamp turns on, before the first image."/>
+                                    </StackPanel>
+                                    <StackPanel Grid.Column="1" Orientation="Horizontal">
+                                        <TextBox x:Name="LampSettleBox" Style="{StaticResource ValueBoxStyle}"/>
+                                        <TextBlock Text="ms" Style="{StaticResource UnitTextStyle}"/>
+                                    </StackPanel>
+                                </Grid>
+                                <Border Style="{StaticResource RowDividerStyle}"/>
+                                <Grid Style="{StaticResource SettingRowStyle}">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                    </Grid.ColumnDefinitions>
+                                    <StackPanel VerticalAlignment="Center">
+                                        <TextBlock Text="Timeout Flow" Style="{StaticResource SettingRowTitleStyle}"/>
+                                        <TextBlock Style="{StaticResource SettingRowCaptionStyle}"
+                                                   Text="Error if a VisionMaster Flow returns no result within this time."/>
+                                    </StackPanel>
+                                    <StackPanel Grid.Column="1" Orientation="Horizontal">
+                                        <TextBox x:Name="VisionTimeoutBox" Style="{StaticResource ValueBoxStyle}"/>
+                                        <TextBlock Text="ms" Style="{StaticResource UnitTextStyle}"/>
+                                    </StackPanel>
+                                </Grid>
+                            </StackPanel>
+                        </Grid>
+                    </Border>
+
+                    <Border Style="{StaticResource CardBorderStyle}" Padding="0">
+                        <Grid>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="Auto"/>
+                            </Grid.RowDefinitions>
+                            <Border Style="{StaticResource CardHeaderStyle}">
+                                <TextBlock Text="Control Loop" Style="{StaticResource SectionHeaderStyle}"/>
+                            </Border>
+                            <Border Grid.Row="1" Style="{StaticResource DividerStyle}"/>
+                            <StackPanel Grid.Row="2">
+                                <Grid Style="{StaticResource SettingRowStyle}">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                    </Grid.ColumnDefinitions>
+                                    <StackPanel VerticalAlignment="Center">
+                                        <TextBlock Text="Control loop period" Style="{StaticResource SettingRowTitleStyle}"/>
+                                        <TextBlock Style="{StaticResource SettingRowCaptionStyle}"
+                                                   Text="Scan period of SafetyMonitor and the control loop."/>
+                                    </StackPanel>
+                                    <StackPanel Grid.Column="1" Orientation="Horizontal">
+                                        <TextBox x:Name="ControlTickBox" Style="{StaticResource ValueBoxStyle}"/>
+                                        <TextBlock Text="ms" Style="{StaticResource UnitTextStyle}"/>
+                                    </StackPanel>
+                                </Grid>
+                                <Border Style="{StaticResource RowDividerStyle}"/>
+                                <Grid Style="{StaticResource SettingRowStyle}">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                    </Grid.ColumnDefinitions>
+                                    <StackPanel VerticalAlignment="Center">
+                                        <TextBlock Text="Watchdog" Style="{StaticResource SettingRowTitleStyle}"/>
+                                        <TextBlock Style="{StaticResource SettingRowCaptionStyle}"
+                                                   Text="Control loop silent longer than this → alarm 1002."/>
+                                    </StackPanel>
+                                    <StackPanel Grid.Column="1" Orientation="Horizontal">
+                                        <TextBox x:Name="WatchdogBox" Style="{StaticResource ValueBoxStyle}"/>
+                                        <TextBlock Text="ms" Style="{StaticResource UnitTextStyle}"/>
+                                    </StackPanel>
+                                </Grid>
+                            </StackPanel>
+                        </Grid>
+                    </Border>
+
+                    <TextBlock Style="{StaticResource HintStyle}" Margin="4,0,0,0"
+                               Text="Vacuum pick / release delays and the laser mark time belong to the model — edit on the Teaching page. Per-axis home / move timeouts: EtherCAT page → Servo (3 axes)."/>
+                </StackPanel>
+            </ScrollViewer>
+
+            <!-- ══════════ Vision Flow ══════════ Solution VisionMaster + tên Flow / biến. -->
+            <ScrollViewer x:Name="VisionSection" VerticalScrollBarVisibility="Auto" Visibility="Collapsed">
+                <StackPanel Spacing="8" Margin="0,0,12,0">
+
+                    <!-- ══════════ Vision — dựng solution ══════════ -->
+                    <Border Style="{StaticResource CardBorderStyle}" Padding="0">
+                        <Grid>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="*"/>
+                            </Grid.RowDefinitions>
+                            <Border Style="{StaticResource CardHeaderStyle}">
+                                <TextBlock Text="Vision — VisionMaster Solution Setup" Style="{StaticResource SectionHeaderStyle}"/>
+                            </Border>
+                            <Border Grid.Row="1" Style="{StaticResource DividerStyle}"/>
+                            <StackPanel Grid.Row="2" Margin="12">
+                                <TextBlock Text="Solution Path (.solw)" Style="{StaticResource SubHeaderStyle}"/>
+                                <TextBlock Style="{StaticResource HintStyle}"
+                                           Text="Only ONE .solw file for the whole machine (VmSolution is an SDK singleton). After changing, press RELOAD — takes effect immediately."/>
+                                <StackPanel Orientation="Horizontal" Spacing="8">
+                                    <TextBox x:Name="SolutionPathBox" Width="380" TextChanged="OnSolutionPathChanged"/>
+                                    <Button Content="BROWSE" Width="90" Click="OnBrowseSolutionClick"/>
+                                    <Button Content="RELOAD" Width="150" Style="{StaticResource PrimaryButton}" Click="OnReloadSolutionClick"/>
+                                    <TextBlock x:Name="VisionReloadText" Style="{StaticResource CaptionStyle}" VerticalAlignment="Center" Margin="4,0,0,0"
+                                               TextWrapping="Wrap" MaxWidth="480"/>
+                                </StackPanel>
+
+                                <Border Style="{StaticResource CardDividerStyle}"/>
+
+                                <TextBlock Text="Solution Tools" Style="{StaticResource SubHeaderStyle}"/>
+                                <TextBlock Style="{StaticResource HintStyle}"
+                                           Text="None of these buttons runs a Flow or triggers a camera. Hover over a button to see what it does. Try on a copy of the .solw first."/>
+                                <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
+                                    <Button x:Name="CheckGlobalVarsButton" Content="CHECK VARS" Width="130" Click="OnCheckGlobalVarsClick"
+                                            ToolTipService.ToolTip="Compare the solution against the global variables the Flows need. Read-only, changes nothing."/>
+                                    <Button x:Name="CreateGlobalVarsButton" Content="ADD VARS" Width="160" Margin="8,0,0,0"
+                                            Style="{StaticResource PrimaryButton}" Click="OnCreateGlobalVarsClick"
+                                            ToolTipService.ToolTip="Create MISSING variables via the SDK, then save the solution. Existing variables keep their value and type."/>
+                                    <Border Style="{StaticResource VerticalDividerStyle}" Margin="16,4"/>
+                                    <Button x:Name="CheckFlowOutputsButton" Content="CHECK FLOW" Width="190" Click="OnCheckFlowOutputsClick"
+                                            ToolTipService.ToolTip="Check that Flows declare all outputs: misspelled names, types the App cannot read as numbers, Script Inputs with an empty Subscribe field."/>
+                                </StackPanel>
+                                <!-- Hai báo cáo chỉ đọc (TextBox IsReadOnly không viền của bản WPF); ẩn khi chưa có gì. -->
+                                <ScrollViewer x:Name="GlobalVarReportScroll" MaxHeight="160" VerticalScrollBarVisibility="Auto" Visibility="Collapsed">
+                                    <TextBlock x:Name="GlobalVarReportText" Style="{StaticResource ReportTextStyle}" FontSize="12"/>
+                                </ScrollViewer>
+                                <ScrollViewer x:Name="FlowOutputReportScroll" MaxHeight="320" VerticalScrollBarVisibility="Auto" Visibility="Collapsed"
+                                              Margin="0,8,0,0">
+                                    <TextBlock x:Name="FlowOutputReportText" Style="{StaticResource ReportTextStyle}" FontSize="11" FontFamily="Consolas"/>
+                                </ScrollViewer>
+                            </StackPanel>
+                        </Grid>
+                    </Border>
+
+                    <!-- ══════════ Vision — tên Flow và biến ══════════ -->
+                    <Border Style="{StaticResource CardBorderStyle}" Padding="0">
+                        <Grid>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="*"/>
+                            </Grid.RowDefinitions>
+                            <Border Style="{StaticResource CardHeaderStyle}">
+                                <TextBlock Text="Vision — Flow &amp; Variable Names in Solution" Style="{StaticResource SectionHeaderStyle}"/>
+                            </Border>
+                            <Border Grid.Row="1" Style="{StaticResource DividerStyle}"/>
+                            <StackPanel Grid.Row="2" Margin="12">
+                                <TextBlock Style="{StaticResource HintStyle}"
+                                           Text="One Flow: LocateCan (fixed CAM, one nozzle at a time). It both inspects and loads N-Point calibration points, branching on the int variable IsLocate (1 = inspect, 0 = load point). Enter the exact names used in the solution, then press SAVE."/>
+
+                                <TextBlock Text="Flow &amp; Output Names" Style="{StaticResource SubHeaderStyle}"/>
+                                <StackPanel Orientation="Horizontal" Spacing="24">
+                                    <StackPanel>
+                                        <TextBlock Text="Flow LocateCan" Style="{StaticResource FieldLabel}"/>
+                                        <TextBox x:Name="FlowLocateCanBox" Width="160"/>
+                                    </StackPanel>
+                                    <StackPanel>
+                                        <TextBlock Text="Output Found" Style="{StaticResource FieldLabel}"/>
+                                        <TextBox x:Name="OutFoundBox" Width="160"/>
+                                    </StackPanel>
+                                    <StackPanel>
+                                        <TextBlock Text="Output image (empty = no image)" Style="{StaticResource FieldLabel}"/>
+                                        <TextBox x:Name="OutImageBox" Width="200"/>
+                                    </StackPanel>
+                                </StackPanel>
+
+                                <Border Style="{StaticResource CardDividerStyle}" Margin="-12,12,-12,12"/>
+
+                                <TextBlock Text="Main Page Image Frame" Style="{StaticResource SubHeaderStyle}"/>
+                                <TextBlock Style="{StaticResource HintStyle}"
+                                           Text="Flow name (e.g. LocateCan) → whole-Flow Display; Flow.Module (e.g. LocateCan.Module) → that module. Empty: the CAM frame follows the LocateCan Flow."/>
+                                <StackPanel>
+                                    <TextBlock Text="CAM frame" Style="{StaticResource FieldLabel}"/>
+                                    <TextBox x:Name="RenderCamBox" Width="210" HorizontalAlignment="Left"/>
+                                </StackPanel>
+
+                                <Border Style="{StaticResource CardDividerStyle}" Margin="-12,12,-12,12"/>
+
+                                <TextBlock Text="Global Variables Written Before Each Flow" Style="{StaticResource SubHeaderStyle}"/>
+                                <TextBlock Style="{StaticResource HintStyle}"
+                                           Text="Encoder X / Z at capture, nozzle number 1…7 being inspected, and the branch variable — 1 inspect, 0 load calibration point (int type for the branch Module). Leave the branch variable name empty and the App will not write it."/>
+                                <StackPanel Orientation="Horizontal" Spacing="24">
+                                    <StackPanel>
+                                        <TextBlock Text="Module Global Variable (empty = auto-detect)" Style="{StaticResource FieldLabel}"/>
+                                        <TextBox x:Name="GlobalVarModuleBox" Width="220"/>
+                                    </StackPanel>
+                                    <StackPanel>
+                                        <TextBlock Text="Axis X var (mm)" Style="{StaticResource FieldLabel}"/>
+                                        <TextBox x:Name="GvAxisXBox" Width="110"/>
+                                    </StackPanel>
+                                    <StackPanel>
+                                        <TextBlock Text="Axis Z var (mm)" Style="{StaticResource FieldLabel}"/>
+                                        <TextBox x:Name="GvAxisZBox" Width="110"/>
+                                    </StackPanel>
+                                    <StackPanel>
+                                        <TextBlock Text="Nozzle var (1…7)" Style="{StaticResource FieldLabel}"/>
+                                        <TextBox x:Name="GvNozzleBox" Width="110"/>
+                                    </StackPanel>
+                                    <StackPanel>
+                                        <TextBlock Text="Branch var (int)" Style="{StaticResource FieldLabel}"/>
+                                        <TextBox x:Name="GvIsLocateBox" Width="130"/>
+                                    </StackPanel>
+                                </StackPanel>
+                            </StackPanel>
+                        </Grid>
+                    </Border>
+
+                    <!-- ══════════ Bù laser và hiệu chuẩn ══════════ SystemData::LaserComp + VisionCalib (PLAN-LASER.md §4.2, §4.3). -->
+                    <Border Style="{StaticResource CardBorderStyle}" Padding="0">
+                        <Grid>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="*"/>
+                            </Grid.RowDefinitions>
+                            <Border Style="{StaticResource CardHeaderStyle}">
+                                <TextBlock Text="Laser Compensation &amp; Calibration" Style="{StaticResource SectionHeaderStyle}"/>
+                            </Border>
+                            <Border Grid.Row="1" Style="{StaticResource DividerStyle}"/>
+                            <StackPanel Grid.Row="2" Margin="12">
+                                <TextBlock Text="Laser Station Compensation" Style="{StaticResource SubHeaderStyle}"/>
+                                <TextBlock Style="{StaticResource HintStyle}"
+                                           Text="X_target = Laser(k).X + TrimX[k] + GainX · dX;  Z_target = Laser(k).Z + TrimZ[k] + GainZ · dZ, with (dX, dZ) = can position vs. master of that nozzle. Default gain −1 (move the nozzle back by the offset); if the mark lands on the wrong side, change the sign here — do not edit the Flow. |dX| or |dZ| above the limit → cell NG, not marked (alarm 5004)."/>
+                                <StackPanel Orientation="Horizontal" Spacing="24">
+                                    <StackPanel>
+                                        <TextBlock Text="Gain X" Style="{StaticResource FieldLabel}"/>
+                                        <TextBox x:Name="GainXBox" Width="110" TextAlignment="Right"/>
+                                    </StackPanel>
+                                    <StackPanel>
+                                        <TextBlock Text="Gain Z" Style="{StaticResource FieldLabel}"/>
+                                        <TextBox x:Name="GainZBox" Width="110" TextAlignment="Right"/>
+                                    </StackPanel>
+                                    <StackPanel>
+                                        <TextBlock Text="Max compensation (mm)" Style="{StaticResource FieldLabel}"/>
+                                        <TextBox x:Name="MaxCompBox" Width="140" TextAlignment="Right"/>
+                                    </StackPanel>
+                                    <StackPanel>
+                                        <TextBlock Text="Laser pulse minimum (ms)" Style="{StaticResource FieldLabel}"/>
+                                        <TextBox x:Name="LaserPulseMinBox" Width="150" TextAlignment="Right"/>
+                                    </StackPanel>
+                                </StackPanel>
+
+                                <Border Style="{StaticResource CardDividerStyle}" Margin="-12,12,-12,12"/>
+
+                                <TextBlock Text="X × Z Grid Calibration (Vision Edit page)" Style="{StaticResource SubHeaderStyle}"/>
+                                <TextBlock Style="{StaticResource HintStyle}"
+                                           Text="9-point grid around the saved center: step per axis, nozzle holding the master can, VERIFY GRID travel and tolerance, images averaged per measurement. Master age above the valid days → warning 4090."/>
+                                <StackPanel Orientation="Horizontal" Spacing="24">
+                                    <StackPanel>
+                                        <TextBlock Text="Grid step X (mm)" Style="{StaticResource FieldLabel}"/>
+                                        <TextBox x:Name="GridStepXBox" Width="110" TextAlignment="Right"/>
+                                    </StackPanel>
+                                    <StackPanel>
+                                        <TextBlock Text="Grid step Z (mm)" Style="{StaticResource FieldLabel}"/>
+                                        <TextBox x:Name="GridStepZBox" Width="110" TextAlignment="Right"/>
+                                    </StackPanel>
+                                    <StackPanel>
+                                        <TextBlock Text="Calibration nozzle (1…7)" Style="{StaticResource FieldLabel}"/>
+                                        <TextBox x:Name="CalibNozzleBox" Width="140" TextAlignment="Right"/>
+                                    </StackPanel>
+                                    <StackPanel>
+                                        <TextBlock Text="Verify travel (mm)" Style="{StaticResource FieldLabel}"/>
+                                        <TextBox x:Name="VerifyStepBox" Width="110" TextAlignment="Right"/>
+                                    </StackPanel>
+                                    <StackPanel>
+                                        <TextBlock Text="Verify tolerance (mm)" Style="{StaticResource FieldLabel}"/>
+                                        <TextBox x:Name="ResidualTolBox" Width="130" TextAlignment="Right"/>
+                                    </StackPanel>
+                                    <StackPanel>
+                                        <TextBlock Text="Images per measurement" Style="{StaticResource FieldLabel}"/>
+                                        <TextBox x:Name="ShotsPerPointBox" Width="140" TextAlignment="Right"/>
+                                    </StackPanel>
+                                    <StackPanel>
+                                        <TextBlock Text="Calibration valid (days)" Style="{StaticResource FieldLabel}"/>
+                                        <TextBox x:Name="CalibValidDaysBox" Width="130" TextAlignment="Right"/>
+                                    </StackPanel>
+                                </StackPanel>
+                                <TextBlock x:Name="GridCenterText" Style="{StaticResource CaptionStyle}" Margin="0,8,0,0"/>
+                            </StackPanel>
+                        </Grid>
+                    </Border>
+                </StackPanel>
+            </ScrollViewer>
+
+            <!-- ══════════ Nhật ký (bộ nhớ) ══════════ -->
+            <Border x:Name="LogSection" Style="{StaticResource CardBorderStyle}" Padding="0" Visibility="Collapsed">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*"/>
+                    </Grid.RowDefinitions>
+                    <Border Style="{StaticResource CardHeaderStyle}">
+                        <TextBlock Text="Log (Memory)" Style="{StaticResource SectionHeaderStyle}"/>
+                    </Border>
+                    <Border Grid.Row="1" Style="{StaticResource DividerStyle}"/>
+                    <Border x:Name="LogHost" Grid.Row="2"/>
+                </Grid>
+            </Border>
+        </Grid>
+    </Grid>
+</UserControl>

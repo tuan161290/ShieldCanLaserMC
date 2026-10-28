@@ -1,0 +1,13 @@
+namespace ShieldCanLaser
+{
+    /// Nền cửa sổ (lớp 0): Mica (mặc định) hoặc Acrylic Thin (UseAcrylic="True"), GIỮ NGUYÊN khi cửa sổ mất focus.
+    /// MicaBackdrop / DesktopAcrylicBackdrop có sẵn của XAML đổi sang màu đặc khi cửa sổ không active. Cùng cách với app
+    /// GFP Test UI.
+    [default_interface]
+    runtimeclass AppBackdrop : Microsoft.UI.Xaml.Media.SystemBackdrop
+    {
+        AppBackdrop();
+        /// Đọc khi nền gắn vào cửa sổ — đặt trong XAML, không đổi lúc đang chạy.
+        Boolean UseAcrylic;
+    }
+}

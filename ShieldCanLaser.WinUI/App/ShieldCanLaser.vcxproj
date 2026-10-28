@@ -1,0 +1,281 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <!--
+    App HMI: WinUI 3 (C++/WinRT), unpackaged, Windows App SDK self-contained, chỉ x64.
+    Các thuộc tính "lạ" bên dưới đều là bẫy build đã gặp và xử lý ở VmWinUiProbe — xem
+    BAN-GIAO-VM-WinUI3.md mục 7. Đừng bỏ cái nào.
+  -->
+  <PropertyGroup Label="Globals">
+    <CppWinRTOptimized>true</CppWinRTOptimized>
+    <CppWinRTRootNamespaceAutoMerge>true</CppWinRTRootNamespaceAutoMerge>
+    <CppWinRTGenerateWindowsMetadata>true</CppWinRTGenerateWindowsMetadata>
+    <MinimalCoreWin>true</MinimalCoreWin>
+    <ProjectGuid>{5A0E7C11-3B6D-4E52-9C1A-6F2D8B4E1A04}</ProjectGuid>
+    <ProjectName>ShieldCanLaser</ProjectName>
+    <RootNamespace>ShieldCanLaser</RootNamespace>
+    <DefaultLanguage>en-US</DefaultLanguage>
+    <MinimumVisualStudioVersion>16.0</MinimumVisualStudioVersion>
+    <AppContainerApplication>false</AppContainerApplication>
+    <WindowsAppContainer>false</WindowsAppContainer>
+    <AppxPackage>false</AppxPackage>
+    <ApplicationType>Windows Store</ApplicationType>
+    <ApplicationTypeRevision>10.0</ApplicationTypeRevision>
+    <WindowsTargetPlatformVersion>10.0.28000.0</WindowsTargetPlatformVersion>
+    <WindowsTargetPlatformMinVersion>10.0.17763.0</WindowsTargetPlatformMinVersion>
+    <UseWinUI>true</UseWinUI>
+    <EnableMsixTooling>true</EnableMsixTooling>
+    <WindowsPackageType>None</WindowsPackageType>
+    <WindowsAppSDKSelfContained>true</WindowsAppSDKSelfContained>
+    <CharacterSet>Unicode</CharacterSet>
+    <!-- NuGet của VS 2026 lúc build rơi về UAP,Version=v10.0 trong khi restore ghi native; ghim lại -->
+    <NuGetTargetMoniker>native,Version=v0.0</NuGetTargetMoniker>
+    <RuntimeIdentifiers>win10-x64</RuntimeIdentifiers>
+    <!-- VisionMaster 4.4 C++ SDK + header của ComControls -->
+    <VmSdkRoot Condition="'$(VmSdkRoot)'==''">C:\Program Files\VisionMaster4.4.0\Development\V4.x</VmSdkRoot>
+  </PropertyGroup>
+  <ItemGroup Label="ProjectConfigurations">
+    <ProjectConfiguration Include="Debug|x64">
+      <Configuration>Debug</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Release|x64">
+      <Configuration>Release</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
+  </ItemGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
+  <PropertyGroup Label="Configuration">
+    <ConfigurationType>Application</ConfigurationType>
+    <PlatformToolset>v145</PlatformToolset>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)'=='Debug'" Label="Configuration">
+    <UseDebugLibraries>true</UseDebugLibraries>
+    <LinkIncremental>true</LinkIncremental>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)'=='Release'" Label="Configuration">
+    <UseDebugLibraries>false</UseDebugLibraries>
+    <WholeProgramOptimization>false</WholeProgramOptimization>
+    <LinkIncremental>false</LinkIncremental>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
+  <ImportGroup Label="ExtensionSettings" />
+  <ImportGroup Label="PropertySheets">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <PropertyGroup Label="UserMacros" />
+  <PropertyGroup>
+    <!-- ScsRoot / ScsBuildDir (không có dấu \ cuối): build một BẢN SAO của thư mục App ở nơi khác mà vẫn dùng
+         Core, ThirdParty và thư viện đã build của cây chính — xem tools\build-app-copy.ps1. -->
+    <RootDir Condition="'$(ScsRoot)'!=''">$(ScsRoot)\</RootDir>
+    <RootDir Condition="'$(ScsRoot)'==''">$(MSBuildThisFileDirectory)..\</RootDir>
+    <AppBuildDir Condition="'$(ScsBuildDir)'!=''">$(ScsBuildDir)\</AppBuildDir>
+    <AppBuildDir Condition="'$(ScsBuildDir)'==''">$(RootDir)build\</AppBuildDir>
+    <SoemDir>$(RootDir)ThirdParty\soem\</SoemDir>
+    <OutDir>$(AppBuildDir)$(Platform)\$(Configuration)\App\</OutDir>
+    <IntDir>$(AppBuildDir)obj\$(Platform)\$(Configuration)\App\</IntDir>
+    <GenerateManifest>true</GenerateManifest>
+    <EmbedManifest>true</EmbedManifest>
+  </PropertyGroup>
+  <ItemDefinitionGroup>
+    <ClCompile>
+      <PrecompiledHeader>Use</PrecompiledHeader>
+      <PrecompiledHeaderFile>pch.h</PrecompiledHeaderFile>
+      <PrecompiledHeaderOutputFile>$(IntDir)pch.pch</PrecompiledHeaderOutputFile>
+      <WarningLevel>Level3</WarningLevel>
+      <LanguageStandard>stdcpp20</LanguageStandard>
+      <!-- /EHs: hàm xuất của SDK VM khai báo extern "C" nhưng vẫn ném CVmException; với /EHsc trình
+           biên dịch bỏ luôn khối catch quanh các lời gọi đó -->
+      <ExceptionHandling>SyncCThrow</ExceptionHandling>
+      <AdditionalOptions>%(AdditionalOptions) /utf-8 /bigobj</AdditionalOptions>
+      <!-- ATL bị tắt cứng với ApplicationType=Windows Store, nên tự thêm đường dẫn atlmfc + atls.lib -->
+      <AdditionalIncludeDirectories>$(MSBuildThisFileDirectory);$(RootDir)Core;$(RootDir)ThirdParty;$(VCToolsInstallDir)atlmfc\include;$(VmSdkRoot)\Includes;$(VmSdkRoot)\ComControls\Includes\VS2017;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <PreprocessorDefinitions>NOMINMAX;_CRT_SECURE_NO_WARNINGS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <DisableSpecificWarnings>4819;4828;%(DisableSpecificWarnings)</DisableSpecificWarnings>
+      <MultiProcessorCompilation>true</MultiProcessorCompilation>
+      <!-- /Z7: debug info nằm trong .obj, không có vc145.pdb dùng chung lúc biên dịch. Thư mục build nằm
+           trong vùng đồng bộ OwnCloud; file .pdb bị nhiều cl.exe và trình đồng bộ cùng mở là nguồn lỗi C1041. -->
+      <DebugInformationFormat>OldStyle</DebugInformationFormat>
+    </ClCompile>
+    <Link>
+      <SubSystem>Windows</SubSystem>
+      <GenerateWindowsMetadata>false</GenerateWindowsMetadata>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+      <AdditionalDependencies>atls.lib;iMVS-6000PlatformSDK.lib;wpcap.lib;Packet.lib;ws2_32.lib;winmm.lib;iphlpapi.lib;gdiplus.lib;dwmapi.lib;psapi.lib;delayimp.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalLibraryDirectories>$(VCToolsInstallDir)atlmfc\lib\x64;$(VmSdkRoot)\Libraries\win64\C;$(SoemDir)oshw\win32\wpcap\Lib\x64;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+      <!-- Nạp trễ: máy chưa cài Npcap hoặc VisionMaster vẫn mở được app ở chế độ mô phỏng; chọn phần
+           cứng thật mà thiếu thì alarm nói rõ (không bao giờ âm thầm rơi về mô phỏng). -->
+      <DelayLoadDLLs>wpcap.dll;Packet.dll;iMVS-6000PlatformSDK.dll;%(DelayLoadDLLs)</DelayLoadDLLs>
+      <AdditionalOptions>%(AdditionalOptions) /IGNORE:4199</AdditionalOptions>
+    </Link>
+  </ItemDefinitionGroup>
+  <ItemGroup>
+    <ClInclude Include="pch.h" />
+    <ClInclude Include="AppBackdrop.h">
+      <DependentUpon>AppBackdrop.idl</DependentUpon>
+    </ClInclude>
+    <ClInclude Include="Ui\*.h" />
+    <ClInclude Include="App.xaml.h">
+      <DependentUpon>App.xaml</DependentUpon>
+    </ClInclude>
+    <ClInclude Include="MainWindow.xaml.h">
+      <DependentUpon>MainWindow.xaml</DependentUpon>
+    </ClInclude>
+    <ClInclude Include="MainPage.xaml.h">
+      <DependentUpon>MainPage.xaml</DependentUpon>
+    </ClInclude>
+    <ClInclude Include="ManualPage.xaml.h">
+      <DependentUpon>ManualPage.xaml</DependentUpon>
+    </ClInclude>
+    <ClInclude Include="TeachingPage.xaml.h">
+      <DependentUpon>TeachingPage.xaml</DependentUpon>
+    </ClInclude>
+    <ClInclude Include="SettingPage.xaml.h">
+      <DependentUpon>SettingPage.xaml</DependentUpon>
+    </ClInclude>
+    <ClInclude Include="EtherCatPage.xaml.h">
+      <DependentUpon>EtherCatPage.xaml</DependentUpon>
+    </ClInclude>
+    <ClInclude Include="VisionEditPage.xaml.h">
+      <DependentUpon>VisionEditPage.xaml</DependentUpon>
+    </ClInclude>
+    <ClInclude Include="AlarmPage.xaml.h">
+      <DependentUpon>AlarmPage.xaml</DependentUpon>
+    </ClInclude>
+  </ItemGroup>
+  <ItemGroup>
+    <ApplicationDefinition Include="App.xaml">
+      <SubType>Designer</SubType>
+    </ApplicationDefinition>
+    <Page Include="MainWindow.xaml">
+      <SubType>Designer</SubType>
+    </Page>
+    <Page Include="MainPage.xaml">
+      <SubType>Designer</SubType>
+    </Page>
+    <Page Include="ManualPage.xaml">
+      <SubType>Designer</SubType>
+    </Page>
+    <Page Include="TeachingPage.xaml">
+      <SubType>Designer</SubType>
+    </Page>
+    <Page Include="SettingPage.xaml">
+      <SubType>Designer</SubType>
+    </Page>
+    <Page Include="EtherCatPage.xaml">
+      <SubType>Designer</SubType>
+    </Page>
+    <Page Include="VisionEditPage.xaml">
+      <SubType>Designer</SubType>
+    </Page>
+    <Page Include="AlarmPage.xaml">
+      <SubType>Designer</SubType>
+    </Page>
+    <Page Include="Styles.xaml">
+      <SubType>Designer</SubType>
+    </Page>
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="pch.cpp">
+      <PrecompiledHeader>Create</PrecompiledHeader>
+    </ClCompile>
+    <ClCompile Include="App.xaml.cpp">
+      <DependentUpon>App.xaml</DependentUpon>
+    </ClCompile>
+    <ClCompile Include="MainWindow.xaml.cpp">
+      <DependentUpon>MainWindow.xaml</DependentUpon>
+    </ClCompile>
+    <ClCompile Include="MainPage.xaml.cpp">
+      <DependentUpon>MainPage.xaml</DependentUpon>
+    </ClCompile>
+    <ClCompile Include="ManualPage.xaml.cpp">
+      <DependentUpon>ManualPage.xaml</DependentUpon>
+    </ClCompile>
+    <ClCompile Include="TeachingPage.xaml.cpp">
+      <DependentUpon>TeachingPage.xaml</DependentUpon>
+    </ClCompile>
+    <ClCompile Include="SettingPage.xaml.cpp">
+      <DependentUpon>SettingPage.xaml</DependentUpon>
+    </ClCompile>
+    <ClCompile Include="EtherCatPage.xaml.cpp">
+      <DependentUpon>EtherCatPage.xaml</DependentUpon>
+    </ClCompile>
+    <ClCompile Include="VisionEditPage.xaml.cpp">
+      <DependentUpon>VisionEditPage.xaml</DependentUpon>
+    </ClCompile>
+    <ClCompile Include="AlarmPage.xaml.cpp">
+      <DependentUpon>AlarmPage.xaml</DependentUpon>
+    </ClCompile>
+    <!-- Mã giao diện không gắn với một file XAML: thêm file .cpp vào Ui\ là đủ. -->
+    <ClCompile Include="Ui\*.cpp" />
+    <ClCompile Include="AppBackdrop.cpp">
+      <DependentUpon>AppBackdrop.idl</DependentUpon>
+    </ClCompile>
+    <ClCompile Include="$(GeneratedFilesDir)module.g.cpp" />
+  </ItemGroup>
+  <ItemGroup>
+    <Midl Include="App.idl">
+      <DependentUpon>App.xaml</DependentUpon>
+    </Midl>
+    <Midl Include="MainWindow.idl">
+      <DependentUpon>MainWindow.xaml</DependentUpon>
+    </Midl>
+    <Midl Include="MainPage.idl">
+      <DependentUpon>MainPage.xaml</DependentUpon>
+    </Midl>
+    <Midl Include="ManualPage.idl">
+      <DependentUpon>ManualPage.xaml</DependentUpon>
+    </Midl>
+    <Midl Include="TeachingPage.idl">
+      <DependentUpon>TeachingPage.xaml</DependentUpon>
+    </Midl>
+    <Midl Include="SettingPage.idl">
+      <DependentUpon>SettingPage.xaml</DependentUpon>
+    </Midl>
+    <Midl Include="EtherCatPage.idl">
+      <DependentUpon>EtherCatPage.xaml</DependentUpon>
+    </Midl>
+    <Midl Include="VisionEditPage.idl">
+      <DependentUpon>VisionEditPage.xaml</DependentUpon>
+    </Midl>
+    <Midl Include="AlarmPage.idl">
+      <DependentUpon>AlarmPage.xaml</DependentUpon>
+    </Midl>
+    <!-- Nền cửa sổ Mica/Acrylic không tắt khi mất focus (không gắn với file XAML nào). -->
+    <Midl Include="AppBackdrop.idl" />
+  </ItemGroup>
+  <ItemGroup>
+    <Manifest Include="app.manifest" />
+  </ItemGroup>
+  <ItemGroup>
+    <Image Include="Assets\LogoActro.png" />
+    <Image Include="Assets\LogoHoyeon.png" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="$(RootDir)Core\Core.vcxproj">
+      <Project>{5A0E7C11-3B6D-4E52-9C1A-6F2D8B4E1A02}</Project>
+    </ProjectReference>
+    <ProjectReference Include="$(RootDir)Soem\Soem.vcxproj">
+      <Project>{5A0E7C11-3B6D-4E52-9C1A-6F2D8B4E1A01}</Project>
+    </ProjectReference>
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Windows.CppWinRT" Version="2.0.250303.1" />
+    <PackageReference Include="Microsoft.WindowsAppSDK" Version="1.8.260921001" />
+    <PackageReference Include="Microsoft.Windows.SDK.BuildTools" Version="10.0.28000.2705" />
+  </ItemGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
+  <ImportGroup Label="ExtensionTargets" />
+  <!--
+    Dữ liệu chạy cạnh exe:
+      Config\alarms.json  bản mẫu bảng mã alarm (AlarmCatalog rơi về đây khi %APP_PATH%\Config chưa có)
+      DriverInfo\**       ESI của driver/bộ ghép — bề rộng bit từng module trong rack R1EC và tên driver cho nút Scan
+  -->
+  <Target Name="CopyRuntimeData" AfterTargets="Build">
+    <ItemGroup>
+      <_AlarmTable Include="$(RootDir)..\Config\alarms.json" />
+      <_DriverInfo Include="$(RootDir)DriverInfo\**\*.xml" />
+    </ItemGroup>
+    <Copy SourceFiles="@(_AlarmTable)" DestinationFolder="$(OutDir)Config" SkipUnchangedFiles="true" />
+    <Copy SourceFiles="@(_DriverInfo)" DestinationFolder="$(OutDir)DriverInfo\%(RecursiveDir)" SkipUnchangedFiles="true" />
+  </Target>
+</Project>

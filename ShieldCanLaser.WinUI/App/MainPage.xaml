@@ -1,0 +1,427 @@
+<?xml version="1.0" encoding="utf-8"?>
+<UserControl
+    x:Class="ShieldCanLaser.MainPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:local="using:ShieldCanLaser">
+
+    <!-- Trang Main: vận hành + sản lượng (trái), 2 tray + 7 nozzle + khung ảnh CAM (giữa), nhật ký (phải).
+         Không binding: MainPage.xaml.cpp đọc trạng thái từ Core trong OnTick() và đặt thuộc tính control khi giá trị đổi.
+         Cột trái/phải hẹp, ưu tiên cột giữa (ảnh CAM) — màn thực tế 1280×1024 (4:3). -->
+    <Grid x:Name="Root" Loaded="OnRootLoaded">
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="256"/>
+            <ColumnDefinition Width="*"/>
+            <ColumnDefinition Width="290"/>
+        </Grid.ColumnDefinitions>
+
+        <!-- ═══ Cột trái: vận hành + sản lượng ═══ — cuộn được phòng khi hiện thêm thông báo. Thanh cuộn WinUI nổi đè lên
+             nội dung (WPF đặt cạnh nội dung), nên khe 8 px giữa hai cột nằm TRONG ScrollViewer: thanh cuộn chạy trong khe,
+             không che mép card. -->
+        <ScrollViewer x:Name="LeftScroll" Grid.Column="0" VerticalScrollBarVisibility="Auto">
+            <StackPanel Margin="0,0,8,0">
+
+                <!-- ══════════ Chế độ ══════════ -->
+                <Border Style="{StaticResource CardBorderStyle}" Padding="0" Margin="0,0,0,8">
+                    <Grid>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                        </Grid.RowDefinitions>
+                        <Border Style="{StaticResource CardHeaderStyle}">
+                            <TextBlock Text="MODE" Style="{StaticResource SectionHeaderStyle}"/>
+                        </Border>
+                        <Border Grid.Row="1" Style="{StaticResource DividerStyle}"/>
+                        <!-- Không có công tắc chìa AUTO/MANUAL vật lý — chọn chế độ bằng 2 nút này (McControl::RequestSetMode).
+                             Nút đang chọn tô theo màu đèn tháp tương ứng (AUTO xanh lá, MANUAL cam). -->
+                        <Grid Grid.Row="2" Margin="12" ColumnSpacing="8">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+                            <Button x:Name="AutoButton" Grid.Column="0" Content="AUTO" Height="44"
+                                    HorizontalAlignment="Stretch" FontSize="15" FontWeight="Bold" Click="OnAutoClick"/>
+                            <Button x:Name="ManualButton" Grid.Column="1" Content="MANUAL" Height="44"
+                                    HorizontalAlignment="Stretch" FontSize="15" FontWeight="Bold" Click="OnManualClick"/>
+                        </Grid>
+                    </Grid>
+                </Border>
+
+                <!-- ══════════ Vận hành ══════════ -->
+                <Border Style="{StaticResource CardBorderStyle}" Padding="0" Margin="0,0,0,8">
+                    <Grid>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                        </Grid.RowDefinitions>
+                        <Border Style="{StaticResource CardHeaderStyle}">
+                            <TextBlock Text="OPERATION" Style="{StaticResource SectionHeaderStyle}"/>
+                        </Border>
+                        <Border Grid.Row="1" Style="{StaticResource DividerStyle}"/>
+                        <StackPanel Grid.Row="2" Margin="12">
+                            <!-- 6 nút cùng kích thước, lưới 2 cột:
+                                 RUN — đèn báo kiêm nút bấm, CỐ Ý chỉ vào Armed, KHÔNG chạy máy: chạy thật bắt buộc bấm START vật lý.
+                                       Chữ luôn RUN, MÀU báo trạng thái: xám khi đứng, xanh nhấp nháy khi sẵn sàng, xanh lá khi chạy
+                                       (MainPage.xaml.cpp UpdateRunButton).
+                                 STOP — đỏ khi máy không chạy (giống đèn nút STOP cứng).
+                                 ORIGIN — xanh dương khi cả 3 trục đã về gốc. INIT: nâng Z rồi đưa mọi trục về vị trí chờ, không về gốc
+                                       lại — cam khi bắt buộc Init trước khi chạy tiếp (RunData.UnsafePause). Bấm đúp (quy ước 2026-09-26:
+                                       nút làm trục chạy phải bấm đúp).
+                                 RESET / BUZZER OFF — xử lý alarm; RESET đỏ khi còn alarm. -->
+                            <Grid ColumnSpacing="8" RowSpacing="8">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="*"/>
+                                </Grid.ColumnDefinitions>
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="44"/>
+                                    <RowDefinition Height="44"/>
+                                    <RowDefinition Height="44"/>
+                                </Grid.RowDefinitions>
+                                <Button x:Name="RunButton" Grid.Row="0" Grid.Column="0" Content="RUN"
+                                        HorizontalAlignment="Stretch" VerticalAlignment="Stretch" Padding="4,0" FontSize="15" FontWeight="Bold" Click="OnRunClick"
+                                        Background="{StaticResource StatusOffBrush}" BorderBrush="{StaticResource StatusOffBrush}"
+                                        Foreground="{StaticResource TextOnAccentBrush}"
+                                        ToolTipService.ToolTip="Run lamp: grey = stopped, blinking blue = ready, waiting for START, green = running. Click to arm Ready — the machine runs ONLY when the physical START button on the panel is pressed. This button does not start the machine."/>
+                                <Button x:Name="StopButton" Grid.Row="0" Grid.Column="1" Content="STOP"
+                                        HorizontalAlignment="Stretch" VerticalAlignment="Stretch" Padding="4,0" FontSize="15" FontWeight="Bold" Click="OnStopClick"/>
+                                <Button x:Name="OriginButton" Grid.Row="1" Grid.Column="0" Content="ORIGIN"
+                                        HorizontalAlignment="Stretch" VerticalAlignment="Stretch" Padding="4,0" FontSize="15" FontWeight="Bold" Click="OnOriginClick"/>
+                                <Button x:Name="InitButton" Grid.Row="1" Grid.Column="1" Content="INIT"
+                                        HorizontalAlignment="Stretch" VerticalAlignment="Stretch" Padding="4,0" FontSize="15" FontWeight="Bold"
+                                        DoubleTapped="OnInitDoubleTapped"
+                                        ToolTipService.ToolTip="Double-click: raise Z to safe height, then move all axes to standby position (no re-Origin). Use after a pause, MANUAL switch and manual operation — before resuming."/>
+                                <Button x:Name="ResetButton" Grid.Row="2" Grid.Column="0" Content="RESET"
+                                        HorizontalAlignment="Stretch" VerticalAlignment="Stretch" Padding="4,0" FontSize="15" FontWeight="Bold" Click="OnResetClick"/>
+                                <Button Grid.Row="2" Grid.Column="1" Content="BUZZER OFF"
+                                        HorizontalAlignment="Stretch" VerticalAlignment="Stretch" Padding="4,0" FontSize="15" FontWeight="Bold" Click="OnMuteClick"/>
+                            </Grid>
+
+                            <!-- Chỉ NHẮC — chu trình đang chờ người thao tác, không phải nút bấm. -->
+                            <Border x:Name="WaitOperatorBar" Style="{StaticResource InfoBarWarningStyle}" Margin="0,12,0,0"
+                                    Visibility="Collapsed">
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+                                    <FontIcon Style="{StaticResource InfoBarWarningIconStyle}"/>
+                                    <TextBlock Grid.Column="1" Style="{StaticResource InfoBarTextStyle}" FontWeight="SemiBold"
+                                               Text="Cycle waiting for operator — when done, press START on the panel."/>
+                                </Grid>
+                            </Border>
+                            <Border x:Name="MessageBar" Style="{StaticResource InfoBarWarningStyle}" Margin="0,12,0,0"
+                                    Visibility="Collapsed">
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+                                    <FontIcon Style="{StaticResource InfoBarWarningIconStyle}"/>
+                                    <TextBlock x:Name="MessageText" Grid.Column="1" Style="{StaticResource InfoBarTextStyle}" FontSize="12"/>
+                                </Grid>
+                            </Border>
+                        </StackPanel>
+                    </Grid>
+                </Border>
+
+                <!-- ══════════ Sản lượng ══════════ -->
+                <Border Style="{StaticResource CardBorderStyle}" Padding="0" Margin="0,0,0,8">
+                    <Grid>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                        </Grid.RowDefinitions>
+                        <Border Style="{StaticResource CardHeaderStyle}">
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Text="Production" Style="{StaticResource SectionHeaderStyle}"/>
+                                <Button Grid.Column="1" Content="CLEAR" Width="72" Height="28" MinHeight="28" Padding="8,0"
+                                        FontSize="13" VerticalAlignment="Center" Click="OnClearCountersClick"/>
+                            </Grid>
+                        </Border>
+                        <Border Grid.Row="1" Style="{StaticResource DividerStyle}"/>
+                        <StackPanel Grid.Row="2" Margin="12">
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="*"/>
+                                </Grid.ColumnDefinitions>
+                                <StackPanel Grid.Column="0">
+                                    <TextBlock Text="OK" Style="{StaticResource CaptionStyle}"/>
+                                    <TextBlock x:Name="CountOkText" Text="0" FontSize="26" FontWeight="SemiBold"
+                                               Foreground="{StaticResource SuccessBrush}"/>
+                                </StackPanel>
+                                <StackPanel Grid.Column="1">
+                                    <TextBlock Text="NG" Style="{StaticResource CaptionStyle}"/>
+                                    <TextBlock x:Name="CountNgText" Text="0" FontSize="26" FontWeight="SemiBold"
+                                               Foreground="{StaticResource CriticalBrush}"/>
+                                </StackPanel>
+                                <StackPanel Grid.Column="2">
+                                    <TextBlock Text="Total" Style="{StaticResource CaptionStyle}"/>
+                                    <TextBlock x:Name="CountTotalText" Text="0" FontSize="26" FontWeight="SemiBold"/>
+                                </StackPanel>
+                            </Grid>
+                            <Border Style="{StaticResource CardDividerStyle}"/>
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="*"/>
+                                </Grid.ColumnDefinitions>
+                                <StackPanel Grid.Column="0">
+                                    <TextBlock Text="NG rate" Style="{StaticResource CaptionStyle}"/>
+                                    <TextBlock x:Name="NgRateText" Text="0.00 %" FontSize="16" FontWeight="SemiBold"/>
+                                </StackPanel>
+                                <StackPanel Grid.Column="1"
+                                            ToolTipService.ToolTip="Consecutive NG &gt; 0 is an early sign of vision/mechanical drift, before it raises the overall NG rate.">
+                                    <TextBlock Text="Consecutive NG" Style="{StaticResource CaptionStyle}"/>
+                                    <TextBlock x:Name="ConsecutiveNgText" Text="0" FontSize="16" FontWeight="SemiBold"
+                                               Foreground="{StaticResource TextPrimaryBrush}"/>
+                                </StackPanel>
+                            </Grid>
+                            <!-- Bảng thời gian (Tuấn chốt 2026-10-12). Một chu kỳ = một hàng tray (7 can). "—" = chu kỳ đang
+                                 chạy chưa có số.
+                                 Pre-Tack Time: s/can trung bình của chu kỳ trước (thời gian lượt ÷ số can).
+                                 Tack Time:     s/can trung bình của chu kỳ đang chạy (giây đã chạy ÷ số can đã khắc xong).
+                                 Cycle Time:    thời gian cả chu kỳ — trái: chu kỳ đang chạy, phải: chu kỳ trước.
+                                 Không tính lúc dừng. -->
+                            <Border Style="{StaticResource CardDividerStyle}"/>
+                            <Border BorderBrush="{StaticResource DividerBrush}" BorderThickness="1,1,0,0">
+                                <Grid>
+                                    <Grid.Resources>
+                                        <Style x:Key="TimeCell" TargetType="Border">
+                                            <Setter Property="BorderBrush" Value="{StaticResource DividerBrush}"/>
+                                            <Setter Property="BorderThickness" Value="0,0,1,1"/>
+                                            <Setter Property="Padding" Value="8,6"/>
+                                        </Style>
+                                        <Style x:Key="TimeLabelCell" TargetType="Border" BasedOn="{StaticResource TimeCell}">
+                                            <Setter Property="Background" Value="#08000000"/>
+                                        </Style>
+                                    </Grid.Resources>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto" MinWidth="120"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+                                    <Grid.RowDefinitions>
+                                        <RowDefinition Height="Auto"/>
+                                        <RowDefinition Height="Auto"/>
+                                        <RowDefinition Height="Auto"/>
+                                    </Grid.RowDefinitions>
+
+                                    <Border Grid.Row="0" Style="{StaticResource TimeLabelCell}"
+                                            ToolTipService.ToolTip="Average time per pc in the previous cycle: cycle time divided by pcs in that cycle.">
+                                        <TextBlock Text="Pre-Tack Time" Style="{StaticResource CaptionStyle}" VerticalAlignment="Center"/>
+                                    </Border>
+                                    <Border Grid.Row="0" Grid.Column="1" Style="{StaticResource TimeCell}">
+                                        <TextBlock x:Name="PreTackText" Text="—" FontSize="16" FontWeight="SemiBold"/>
+                                    </Border>
+
+                                    <Border Grid.Row="1" Style="{StaticResource TimeLabelCell}"
+                                            ToolTipService.ToolTip="Average time per pc in the current cycle: elapsed seconds divided by pcs assembled. Shows — until the first pc is done.">
+                                        <TextBlock Text="Tack Time" Style="{StaticResource CaptionStyle}" VerticalAlignment="Center"/>
+                                    </Border>
+                                    <Border Grid.Row="1" Grid.Column="1" Style="{StaticResource TimeCell}">
+                                        <TextBlock x:Name="TackText" Text="—" FontSize="16" FontWeight="SemiBold"/>
+                                    </Border>
+
+                                    <Border Grid.Row="2" Style="{StaticResource TimeLabelCell}"
+                                            ToolTipService.ToolTip="Full cycle time: left = current cycle, right = previous cycle. Stopped time excluded.">
+                                        <TextBlock Text="Cycle Time" Style="{StaticResource CaptionStyle}" VerticalAlignment="Center"/>
+                                    </Border>
+                                    <Border Grid.Row="2" Grid.Column="1" Style="{StaticResource TimeCell}">
+                                        <StackPanel Orientation="Horizontal" Spacing="12">
+                                            <TextBlock x:Name="CycleNowText" Text="—" FontSize="16" FontWeight="SemiBold"/>
+                                            <TextBlock x:Name="CyclePrevText" Text="—" FontSize="16" VerticalAlignment="Center"/>
+                                        </StackPanel>
+                                    </Border>
+                                </Grid>
+                            </Border>
+                            <Border Style="{StaticResource CardDividerStyle}"/>
+                            <TextBlock x:Name="UphText" Text="Est. throughput: 0 pcs/h" FontSize="12"
+                                       ToolTipService.ToolTip="Based on the average time per pc of the last 25 pcs, not the actual count — for quick reference only."/>
+                            <TextBlock x:Name="AutoStepText" Style="{StaticResource CaptionStyle}" Margin="0,2,0,0"/>
+                        </StackPanel>
+                    </Grid>
+                </Border>
+
+                <!-- ══════════ Quy trình ══════════ Tiến độ chu trình: số hàng đã khắc của 2 tray và kết quả 7 nozzle của hàng
+                     vừa xong (Routine_Auto::ProgressText). RESET TRAY: đặt lại tiến độ về hàng 1 tray 1 (lúc đang chờ thay tray thì
+                     = bấm START). -->
+                <Border Style="{StaticResource CardBorderStyle}" Padding="0">
+                    <Grid>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                        </Grid.RowDefinitions>
+                        <Border Style="{StaticResource CardHeaderStyle}">
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Text="Process" Style="{StaticResource SectionHeaderStyle}"/>
+                                <Button Grid.Column="1" Content="RESET TRAY" Height="28" MinHeight="28" Padding="8,0"
+                                        FontSize="13" VerticalAlignment="Center" Click="OnResetTrayClick"
+                                        ToolTipService.ToolTip="Reset tray progress — next cycle starts from row 1 of tray 1. While the cycle waits for a tray change this equals pressing START."/>
+                            </Grid>
+                        </Border>
+                        <Border Grid.Row="1" Style="{StaticResource DividerStyle}"/>
+                        <StackPanel Grid.Row="2" Margin="12">
+                            <TextBlock x:Name="ProgressText" TextWrapping="Wrap" FontSize="13" Margin="0,0,0,6"/>
+                            <TextBlock Style="{StaticResource HintStyle}" Margin="0,0,0,6"
+                                       Text="Load trays → START. Each row: pick 7 cans → CAM each nozzle → laser mark (X/Z compensated) → return to tray. Trays done → replace trays → START."/>
+                            <TextBlock x:Name="BusText" TextWrapping="Wrap" FontSize="11"
+                                       Foreground="{StaticResource TextTertiaryBrush}"/>
+                        </StackPanel>
+                    </Grid>
+                </Border>
+            </StackPanel>
+        </ScrollViewer>
+
+        <!-- ═══ Cột giữa: 2 tray (trái) + 7 nozzle (phải), dưới là khung ảnh CAM ═══ -->
+        <Grid Grid.Column="1" Margin="0,0,8,0">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="*" MinHeight="300"/>
+                <RowDefinition Height="*"/>
+            </Grid.RowDefinitions>
+
+            <!-- Trái: 2 tray TrayRows × 7 ô xếp chồng dọc như trên máy — tray 1 trên, tray 2 dưới; ô giãn kín card. Ô kiểu nút
+                 Calculator Win11, màu theo ECellState (Routine_Auto::Trays; lúc mới mở app thì suy từ RunningData.TrayRowsDone).
+                 Phải: 7 nozzle N1…N7 — ô màu theo trạng thái (Empty / Loaded / Processing / Ok / Ng), chữ trạng thái và độ lệch
+                 dX/dZ đo được ở CAM. Ô và chú thích dựng trong code. -->
+            <Grid Grid.Row="0" Margin="0,0,0,8" ColumnSpacing="8">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="*"/>
+                </Grid.ColumnDefinitions>
+
+                <Border Style="{StaticResource CardBorderStyle}" Padding="0">
+                    <Grid>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="*"/>
+                            <RowDefinition Height="Auto"/>
+                        </Grid.RowDefinitions>
+                        <Border Style="{StaticResource CardHeaderStyle}">
+                            <TextBlock Text="Trays" Style="{StaticResource SectionHeaderStyle}"/>
+                        </Border>
+                        <Border Grid.Row="1" Style="{StaticResource DividerStyle}"/>
+                        <Grid Grid.Row="2" Padding="12,8,12,4" RowSpacing="6">
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="*"/>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="*"/>
+                            </Grid.RowDefinitions>
+                            <StackPanel Orientation="Horizontal" Spacing="12">
+                                <TextBlock Text="Tray 1" Style="{StaticResource SubHeaderStyle}" Margin="0"/>
+                                <TextBlock x:Name="TraySummaryText1" Style="{StaticResource CaptionStyle}" VerticalAlignment="Center"/>
+                            </StackPanel>
+                            <Grid x:Name="TrayMap1" Grid.Row="1"/>
+                            <StackPanel Grid.Row="2" Orientation="Horizontal" Spacing="12" Margin="0,6,0,0">
+                                <TextBlock Text="Tray 2" Style="{StaticResource SubHeaderStyle}" Margin="0"/>
+                                <TextBlock x:Name="TraySummaryText2" Style="{StaticResource CaptionStyle}" VerticalAlignment="Center"/>
+                            </StackPanel>
+                            <Grid x:Name="TrayMap2" Grid.Row="3"/>
+                        </Grid>
+                        <!-- Chú thích màu (chung cho tray và nozzle). Ô cố định 88 px, tự xuống dòng. -->
+                        <VariableSizedWrapGrid x:Name="TrayLegend" Grid.Row="3" Orientation="Horizontal" ItemWidth="88" ItemHeight="24"
+                                               Margin="12,4,12,10"/>
+                    </Grid>
+                </Border>
+
+                <Border Grid.Column="1" Style="{StaticResource CardBorderStyle}" Padding="0">
+                    <Grid>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="*"/>
+                        </Grid.RowDefinitions>
+                        <Border Style="{StaticResource CardHeaderStyle}">
+                            <Grid>
+                                <TextBlock Text="Nozzles" Style="{StaticResource SectionHeaderStyle}"/>
+                                <TextBlock x:Name="NozzleSummaryText" Style="{StaticResource CaptionStyle}" HorizontalAlignment="Right"
+                                           VerticalAlignment="Center"/>
+                            </Grid>
+                        </Border>
+                        <Border Grid.Row="1" Style="{StaticResource DividerStyle}"/>
+                        <!-- 7 hàng N1…N7: ô màu + tên, trạng thái, dX / dZ (mm). Dựng trong code (BuildNozzleStrip). -->
+                        <Grid x:Name="NozzleStrip" Grid.Row="2" Margin="12,8,12,12" RowSpacing="4" ColumnSpacing="8"/>
+                    </Grid>
+                </Border>
+            </Grid>
+
+            <!-- Khung ảnh CAM (một camera cố định, soi từng nozzle): ảnh Bitmap chụp gần nhất (Image) và — chỉ trên máy thật —
+                 control VmRenderControl của VisionMaster (popup bám ô giữ chỗ CamHost) đứng TRÊN ảnh đó, hiện khi đã gắn được
+                 vào Flow/module đặt ở trang Setting (RenderCam; trống = cả Flow LocateCan). -->
+            <Border Grid.Row="1" Style="{StaticResource CardBorderStyle}" Padding="0">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*"/>
+                    </Grid.RowDefinitions>
+                    <Border Style="{StaticResource CardHeaderStyle}">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <TextBlock x:Name="CamTitleText" Text="CAM" Style="{StaticResource SectionHeaderStyle}"
+                                       TextTrimming="CharacterEllipsis"/>
+                            <TextBlock x:Name="CamCapturedText" Grid.Column="1" FontSize="12" Margin="8,0,0,0"
+                                       VerticalAlignment="Center" Foreground="{StaticResource TextTertiaryBrush}"/>
+                            <!-- Hiện/ẩn thanh công cụ (tối) của VmRenderControl — mặc định ẩn. Chỉ hiện khi có control VisionMaster. -->
+                            <Button x:Name="CamToolbarButton" Grid.Column="2" Width="36" Padding="0" Margin="8,0,0,0"
+                                    VerticalAlignment="Center" Visibility="Collapsed" Click="OnCamToolbarClick"
+                                    ToolTipService.ToolTip="Show/hide VisionMaster toolbar (zoom in, zoom out, 1:1, select image)">
+                                <FontIcon Glyph="&#xE71E;" FontSize="16"/>
+                            </Button>
+                        </Grid>
+                    </Border>
+                    <Border Grid.Row="1" Style="{StaticResource DividerStyle}"/>
+                    <Border Grid.Row="2" Margin="8" Background="#FFF9F9F9" CornerRadius="4" MinHeight="140">
+                        <Grid>
+                            <TextBlock x:Name="CamPlaceholder" Text="(no image)" Foreground="{StaticResource TextTertiaryBrush}"
+                                       HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                            <Image x:Name="CamImage" Stretch="Uniform"/>
+                            <Border x:Name="CamHost"/>
+                            <TextBlock x:Name="CamVmText" Visibility="Collapsed" FontSize="11" Foreground="{StaticResource TextSecondaryBrush}"
+                                       TextWrapping="Wrap" VerticalAlignment="Bottom" Margin="8"/>
+                        </Grid>
+                    </Border>
+                </Grid>
+            </Border>
+        </Grid>
+
+        <!-- ═══ Cột phải: log trực tiếp ═══ — mới nhất ở trên; màu theo mức log (Tuấn 02/10): vạch trái + chữ.
+             Info xanh dương, Warning cam, Error đỏ, Debug xám. Dòng dựng trong code (UpdateLog). -->
+        <Border Grid.Column="2" Style="{StaticResource CardBorderStyle}" Padding="0">
+            <Grid>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="*"/>
+                </Grid.RowDefinitions>
+                <Border Style="{StaticResource CardHeaderStyle}">
+                    <TextBlock Text="Log" Style="{StaticResource SectionHeaderStyle}"/>
+                </Border>
+                <Border Grid.Row="1" Style="{StaticResource DividerStyle}"/>
+                <ScrollViewer x:Name="LogScroll" Grid.Row="2" Margin="4" VerticalScrollBarVisibility="Auto"
+                              HorizontalScrollBarVisibility="Disabled">
+                    <StackPanel x:Name="LogPanel"/>
+                </ScrollViewer>
+            </Grid>
+        </Border>
+    </Grid>
+</UserControl>

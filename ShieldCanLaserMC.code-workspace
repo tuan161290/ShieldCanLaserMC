@@ -1,0 +1,18 @@
+{
+	"folders": [
+		{
+			"path": "."
+		},
+		{
+			"path": "../ShieldCanSlitAssyMC"
+		}
+	],
+	"settings": {
+		"files.exclude": {
+			"**/build": true,
+			"**/build-*": true,
+			"**/obj": true,
+			"**/.vs": true
+		}
+	}
+}

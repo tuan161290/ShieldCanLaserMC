@@ -1,0 +1,366 @@
+<?xml version="1.0" encoding="utf-8"?>
+<UserControl
+    x:Class="ShieldCanLaser.EtherCatPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:local="using:ShieldCanLaser">
+
+    <UserControl.Resources>
+        <!-- Nhãn phía trên ô nhập (Windows 11 "Header" của TextBox) -->
+        <Style x:Key="FieldLabel" TargetType="TextBlock" BasedOn="{StaticResource CaptionStyle}">
+            <Setter Property="Margin" Value="0,0,0,4"/>
+        </Style>
+    </UserControl.Resources>
+
+    <!-- Trang EtherCAT (Tuấn 2026-10-09: tách khỏi trang Setting). Cột trái: ba mục — bus + Remote IO, cấu hình servo
+         14 trục, luồng chu kỳ — và nút Lưu system.json dùng chung. Cột phải: dải thông báo EtherCAT (thấy ở mọi mục) +
+         nội dung mục đang chọn. Ô nhập gắn thẳng vào SystemData / AxisConfig sống như trang Setting. -->
+    <Grid x:Name="Root" Loaded="OnRootLoaded" ColumnSpacing="12">
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="200"/>
+            <ColumnDefinition Width="*"/>
+        </Grid.ColumnDefinitions>
+
+        <!-- ══════════ Cột điều hướng ══════════ -->
+        <Grid>
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="*"/>
+                <RowDefinition Height="Auto"/>
+            </Grid.RowDefinitions>
+            <StackPanel>
+                <ToggleButton x:Name="NavButton0" Tag="0" Style="{StaticResource SideNavItemStyle}" Click="OnNavClick">
+                    <StackPanel Orientation="Horizontal">
+                        <FontIcon Glyph="&#xE839;" Style="{StaticResource SideNavIconStyle}"/>
+                        <TextBlock Text="Bus &amp; Remote IO"/>
+                    </StackPanel>
+                </ToggleButton>
+                <ToggleButton x:Name="NavButton1" Tag="1" Style="{StaticResource SideNavItemStyle}" Click="OnNavClick">
+                    <StackPanel Orientation="Horizontal">
+                        <FontIcon Glyph="&#xE9E9;" Style="{StaticResource SideNavIconStyle}"/>
+                        <TextBlock Text="Servo (14 axes)"/>
+                    </StackPanel>
+                </ToggleButton>
+                <ToggleButton x:Name="NavButton2" Tag="2" Style="{StaticResource SideNavItemStyle}" Click="OnNavClick">
+                    <StackPanel Orientation="Horizontal">
+                        <FontIcon Glyph="&#xE9D9;" Style="{StaticResource SideNavIconStyle}"/>
+                        <TextBlock Text="Cycle Thread"/>
+                    </StackPanel>
+                </ToggleButton>
+            </StackPanel>
+
+            <StackPanel Grid.Row="2" Spacing="6">
+                <Button Content="SAVE" Style="{StaticResource PrimaryButton}" HorizontalAlignment="Stretch" Click="OnSaveClick"/>
+                <TextBlock x:Name="SaveResultText" Style="{StaticResource CaptionStyle}" TextWrapping="Wrap" Visibility="Collapsed"/>
+            </StackPanel>
+        </Grid>
+
+        <!-- ══════════ Nội dung ══════════ -->
+        <Grid Grid.Column="1">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="*"/>
+            </Grid.RowDefinitions>
+
+            <Border x:Name="EtherCatMessageBar" Style="{StaticResource InfoBarWarningStyle}" Margin="0,0,0,8" Visibility="Collapsed">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+                    <FontIcon Style="{StaticResource InfoBarWarningIconStyle}"/>
+                    <TextBlock x:Name="EtherCatMessageText" Grid.Column="1" Style="{StaticResource InfoBarTextStyle}" FontSize="12"/>
+                </Grid>
+            </Border>
+
+            <Grid Grid.Row="1">
+                <!-- ══════════ Bus EtherCAT (SOEM) + Remote IO ══════════
+                     Thứ tự thao tác lần đầu ra máy: chọn card mạng → Lưu → khởi động lại → Ngắt bus (nếu đang mở) → Scan →
+                     đối chiếu vị trí slave (cột Slot của Kết quả Scan, sửa ở mục Servo 14 trục) → Lấy định danh từ Scan → Lưu →
+                     Connect All Axis. -->
+                <ScrollViewer x:Name="BusSection" VerticalScrollBarVisibility="Auto">
+                    <Border Style="{StaticResource CardBorderStyle}" Padding="0" VerticalAlignment="Top" Margin="0,0,12,0">
+                        <Grid>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="*"/>
+                            </Grid.RowDefinitions>
+                            <Border Style="{StaticResource CardHeaderStyle}">
+                                <TextBlock Text="EtherCAT Bus (SOEM) — 14 servo axes + Remote IO" Style="{StaticResource SectionHeaderStyle}"/>
+                            </Border>
+                            <Border Grid.Row="1" Style="{StaticResource DividerStyle}"/>
+                            <StackPanel Grid.Row="2" Margin="12,12,12,0">
+                                <TextBlock Style="{StaticResource HintStyle}"
+                                           Text="First commissioning: select NIC → SAVE → restart app → DISCONNECT → SCAN → check Slot column → APPLY SCAN → SAVE → CONNECT ALL. Bus opens only when ALL slots pass and the slave count on the network matches the configuration."/>
+
+                                <StackPanel Orientation="Horizontal" Spacing="16">
+                                    <StackPanel>
+                                        <TextBlock Text="EtherCAT network adapter (Npcap)" Style="{StaticResource FieldLabel}"/>
+                                        <ComboBox x:Name="AdapterCombo" Width="380" SelectionChanged="OnAdapterSelectionChanged"/>
+                                    </StackPanel>
+                                    <StackPanel Orientation="Horizontal" VerticalAlignment="Bottom" Spacing="8">
+                                        <Button x:Name="DisconnectBusButton" Content="DISCONNECT" Width="130" Click="OnDisconnectBusClick"
+                                                ToolTipService.ToolTip="Servo off, then close the bus — required before SCAN (SOEM cannot scan while the bus is open)."/>
+                                        <Button x:Name="ScanButton" Content="SCAN" Width="90" Click="OnScanClick"
+                                                ToolTipService.ToolTip="Scan slaves on the bus: position, Vendor/Product, driver name from ESI. Read-only, does not enter OP."/>
+                                        <Button x:Name="ApplyScanButton" Content="APPLY SCAN" Width="180" Click="OnApplyScanClick"
+                                                ToolTipService.ToolTip="Assign Vendor/Product of each found slave to the configured slot at the SAME slave position (14 axes + Remote IO). Slave positions are not changed — if wiring differs, edit positions in Servo (14 axes) first."/>
+                                        <Button x:Name="ConnectAllButton" Content="CONNECT ALL" Width="160" Style="{StaticResource PrimaryButton}"
+                                                Click="OnConnectAllClick"
+                                                ToolTipService.ToolTip="Save configuration, close and reopen the bus with the current configuration. All axes must be servo-on and homed again."/>
+                                    </StackPanel>
+                                </StackPanel>
+
+                                <TextBlock x:Name="BusText" TextWrapping="Wrap" FontSize="12" Margin="0,8,0,0"/>
+
+                                <Border Style="{StaticResource CardDividerStyle}" Margin="-12,12,-12,0"/>
+
+                                <!-- Kết quả Scan chạy hết bề ngang card; dưới là Remote IO | kết quả Connect, ngăn bằng đường kẻ dọc. -->
+                                <StackPanel Margin="0,12,0,12">
+                                    <TextBlock Text="Scan Result" Style="{StaticResource SubHeaderStyle}"/>
+                                    <!-- Danh sách = lớp control: nền trắng, viền 1 px, bo 4 -->
+                                    <Border x:Name="ScanTableHost" MinHeight="120" MaxHeight="420"
+                                            Background="{StaticResource ControlFillBrush}" BorderBrush="{StaticResource ControlStrokeBrush}"
+                                            BorderThickness="1" CornerRadius="4"/>
+                                </StackPanel>
+
+                                <Border Style="{StaticResource CardDividerStyle}" Margin="-12,0"/>
+
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+
+                                    <StackPanel Margin="0,12,16,12">
+                                        <TextBlock Text="Remote IO (Leadshine R1EC)" Style="{StaticResource SubHeaderStyle}"/>
+                                        <StackPanel Orientation="Horizontal" Spacing="16">
+                                            <StackPanel>
+                                                <TextBlock Text="Slave position" Style="{StaticResource FieldLabel}"/>
+                                                <TextBox x:Name="IoSlaveBox" Width="80"/>
+                                            </StackPanel>
+                                            <StackPanel>
+                                                <TextBlock Text="Vendor/Product" Style="{StaticResource FieldLabel}"/>
+                                                <TextBlock x:Name="IoIdText" MinHeight="32" Padding="0,7,0,0" FontSize="13"/>
+                                            </StackPanel>
+                                            <StackPanel>
+                                                <TextBlock Text="Driver" Style="{StaticResource FieldLabel}"/>
+                                                <TextBlock x:Name="IoDriverText" MinHeight="32" Padding="0,7,0,0" FontSize="13"/>
+                                            </StackPanel>
+                                        </StackPanel>
+                                        <TextBlock x:Name="IoRackText" TextWrapping="Wrap" FontSize="12" Margin="0,4,0,0"/>
+                                    </StackPanel>
+
+                                    <Border Grid.Column="1" Style="{StaticResource VerticalDividerStyle}"/>
+
+                                    <StackPanel Grid.Column="2" Margin="16,12,0,12">
+                                        <TextBlock Text="Last Connect All Axis" Style="{StaticResource SubHeaderStyle}"/>
+                                        <StackPanel x:Name="ConnectResultsPanel"/>
+                                    </StackPanel>
+                                </Grid>
+                            </StackPanel>
+                        </Grid>
+                    </Border>
+                </ScrollViewer>
+
+                <!-- ══════════ Cấu hình servo 14 trục ══════════
+                     Ô nhập ghi thẳng vào chính các AxisConfig sống MotionConnect đang dùng — tốc độ ăn ngay từ lệnh kế tiếp; Lưu
+                     ghi xuống system.json. Vị trí slave, counts/đơn vị, Homing method, định danh driver chỉ có tác dụng ở lần
+                     Connect All Axis kế tiếp (ghi xuống driver lúc mở bus). Vị trí chờ / giới hạn mềm / offset gốc nằm ở trang
+                     Setting → Vị trí làm việc. Cột "Trục" cố định bên trái: ba ScrollViewer cuộn đồng bộ. -->
+                <Border x:Name="ServoSection" Style="{StaticResource CardBorderStyle}" Padding="0" Visibility="Collapsed">
+                    <Grid>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="*"/>
+                        </Grid.RowDefinitions>
+                        <Border Style="{StaticResource CardHeaderStyle}">
+                            <TextBlock Text="Servo Configuration — 14 EtherCAT axes" Style="{StaticResource SectionHeaderStyle}"/>
+                        </Border>
+                        <Border Grid.Row="1" Style="{StaticResource DividerStyle}"/>
+                        <TextBlock Grid.Row="2" Style="{StaticResource HintStyle}" Margin="12,8,12,8"
+                                   Text="Speed: unit/s. Acc / Dec: ms from 0 to Auto high speed. Counts/unit is auto-calculated = Pulse/Rotation ÷ Travel/Rotation when both are entered. Slave / Ch / Counts / Homing / Travel take effect at the next Connect All Axis."/>
+                        <Border Grid.Row="3" Style="{StaticResource DividerStyle}"/>
+
+                        <Grid Grid.Row="4">
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="34"/>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="*"/>
+                            </Grid.RowDefinitions>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="52"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+
+                            <Border BorderBrush="{StaticResource DividerBrush}" BorderThickness="0,0,1,0">
+                                <TextBlock Text="Axis" FontSize="12" Foreground="{StaticResource TextSecondaryBrush}"
+                                           VerticalAlignment="Center" Margin="8,0,0,0"/>
+                            </Border>
+                            <ScrollViewer x:Name="AxisHeaderScroll" Grid.Column="1"
+                                          HorizontalScrollBarVisibility="Hidden" HorizontalScrollMode="Disabled"
+                                          VerticalScrollBarVisibility="Disabled" VerticalScrollMode="Disabled"
+                                          IsTabStop="False">
+                                <Grid x:Name="AxisHeaderGrid" Height="34"/>
+                            </ScrollViewer>
+                            <Border Grid.Row="1" Grid.ColumnSpan="2" Style="{StaticResource DividerStyle}"/>
+
+                            <!-- Cột tên trục không tự cuộn: chỉ đi theo phần thân (ChangeView); lăn chuột trên nó được
+                                 chuyển sang phần thân (OnAxisNamesWheel) — cuộn hai chiều thì hai hoạt ảnh cuộn giành nhau. -->
+                            <ScrollViewer x:Name="AxisNamesScroll" Grid.Row="2" Grid.Column="0"
+                                          HorizontalScrollBarVisibility="Disabled" HorizontalScrollMode="Disabled"
+                                          VerticalScrollBarVisibility="Hidden" VerticalScrollMode="Disabled"
+                                          IsTabStop="False" PointerWheelChanged="OnAxisNamesWheel">
+                                <StackPanel x:Name="AxisNamesPanel" Padding="0,0,0,16"/>
+                            </ScrollViewer>
+                            <ScrollViewer x:Name="AxisBodyScroll" Grid.Row="2" Grid.Column="1"
+                                          HorizontalScrollBarVisibility="Auto" HorizontalScrollMode="Enabled"
+                                          VerticalScrollBarVisibility="Auto" VerticalScrollMode="Enabled"
+                                          ViewChanged="OnAxisBodyViewChanged">
+                                <StackPanel x:Name="AxisBodyPanel" Padding="0,0,0,16" HorizontalAlignment="Left"/>
+                            </ScrollViewer>
+                        </Grid>
+                    </Grid>
+                </Border>
+
+                <!-- ══════════ Luồng chu kỳ EtherCAT ══════════ (mới, không có ở bản WPF: SOEM chạy native, một core CPU
+                     dành riêng cho luồng phát/nhận khung PDO — Core\EtherCat\Soem\RtCyclicThread.h, RtCpu.h). -->
+                <ScrollViewer x:Name="RtSection" VerticalScrollBarVisibility="Auto" Visibility="Collapsed">
+                    <Border Style="{StaticResource CardBorderStyle}" Padding="0" VerticalAlignment="Top" Margin="0,0,12,0">
+                        <Grid>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="*"/>
+                            </Grid.RowDefinitions>
+                            <Border Style="{StaticResource CardHeaderStyle}">
+                                <TextBlock Text="EtherCAT Cycle Thread" Style="{StaticResource SectionHeaderStyle}"/>
+                            </Border>
+                            <Border Grid.Row="1" Style="{StaticResource DividerStyle}"/>
+                            <StackPanel Grid.Row="2" Margin="12">
+                                <TextBlock Style="{StaticResource HintStyle}"
+                                           Text="The real SOEM bus sends/receives PDO frames on a dedicated thread at highest priority, pinned to a reserved CPU core. Takes effect after SAVE + Connect All Axis — no app restart needed. No effect in simulation mode or with the simulated bus."/>
+
+                                <Grid ColumnSpacing="32" RowSpacing="16">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+                                    <Grid.RowDefinitions>
+                                        <RowDefinition Height="Auto"/>
+                                        <RowDefinition Height="Auto"/>
+                                    </Grid.RowDefinitions>
+
+                                    <StackPanel Grid.Row="0" Grid.Column="0">
+                                        <TextBlock Text="Reserved core" Style="{StaticResource FieldLabel}"/>
+                                        <CheckBox x:Name="RtReserveCheck" Content="Reserve one CPU core" MinHeight="32"/>
+                                        <TextBlock Style="{StaticResource HintStyle}" Margin="0,4,0,0"
+                                                   Text="Off: thread still runs at highest priority but shares cores with the rest of the app."/>
+                                    </StackPanel>
+
+                                    <StackPanel Grid.Row="0" Grid.Column="1">
+                                        <TextBlock Text="Logical CPU for cycle thread" Style="{StaticResource FieldLabel}"/>
+                                        <ComboBox x:Name="RtCpuCombo" Width="240" SelectionChanged="OnRtCpuSelectionChanged"/>
+                                        <TextBlock Style="{StaticResource HintStyle}" Margin="0,4,0,0"
+                                                   Text="Auto: highest-numbered core in the lowest performance class (E-core on hybrid CPUs), never the core holding CPU 0. The whole physical core (incl. SMT sibling) is kept free."/>
+                                    </StackPanel>
+
+                                    <StackPanel Grid.Row="1" Grid.Column="0">
+                                        <TextBlock Text="PDO cycle (µs)" Style="{StaticResource FieldLabel}"/>
+                                        <TextBox x:Name="RtCycleBox" Width="110" HorizontalAlignment="Left"/>
+                                        <TextBlock Style="{StaticResource HintStyle}" Margin="0,4,0,0"
+                                                   Text="500–20000. 4000 = value proven on the real machine."/>
+                                    </StackPanel>
+
+                                    <StackPanel Grid.Row="1" Grid.Column="1">
+                                        <TextBlock Text="Spin-wait before each deadline (µs)" Style="{StaticResource FieldLabel}"/>
+                                        <StackPanel Orientation="Horizontal" Spacing="12">
+                                            <CheckBox x:Name="RtSpinAllCheck" Content="Full cycle (no sleep)" MinHeight="32" Click="OnRtSpinAllClick"/>
+                                            <TextBox x:Name="RtSpinBox" Width="100" PlaceholderText="= cycle"/>
+                                        </StackPanel>
+                                        <TextBlock Style="{StaticResource HintStyle}" Margin="0,4,0,0"
+                                                   Text="Default: full cycle — core runs at 100%, lowest jitter (measured: max lateness 1…7 µs). Reduce (e.g. 1000) to save power/heat, at the cost of a longer latency tail (9…570 µs). A value ≥ cycle also means no sleep."/>
+                                    </StackPanel>
+                                </Grid>
+
+                                <Border Style="{StaticResource CardDividerStyle}" Margin="-12,4,-12,12"/>
+
+                                <TextBlock Text="Cycle Thread Statistics (while bus is open)" Style="{StaticResource SubHeaderStyle}"/>
+                                <TextBlock x:Name="RtStatsMessage" Style="{StaticResource HintStyle}" Margin="0"/>
+
+                                <StackPanel x:Name="RtStatsPanel" Visibility="Collapsed" Spacing="10">
+                                    <Grid ColumnSpacing="24" RowSpacing="8">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="*"/>
+                                        </Grid.ColumnDefinitions>
+                                        <Grid.RowDefinitions>
+                                            <RowDefinition Height="Auto"/>
+                                            <RowDefinition Height="Auto"/>
+                                            <RowDefinition Height="Auto"/>
+                                        </Grid.RowDefinitions>
+
+                                        <StackPanel Grid.Row="0" Grid.Column="0">
+                                            <TextBlock Text="Cycle thread CPU" Style="{StaticResource FieldLabel}"/>
+                                            <TextBlock x:Name="RtCpuText" FontSize="13"/>
+                                        </StackPanel>
+                                        <StackPanel Grid.Row="0" Grid.Column="1">
+                                            <TextBlock Text="Cycle / spin-wait" Style="{StaticResource FieldLabel}"/>
+                                            <TextBlock x:Name="RtPeriodText" FontSize="13"/>
+                                        </StackPanel>
+                                        <StackPanel Grid.Row="0" Grid.Column="2">
+                                            <TextBlock Text="Cycles run" Style="{StaticResource FieldLabel}"/>
+                                            <TextBlock x:Name="RtCyclesText" FontSize="13"/>
+                                        </StackPanel>
+
+                                        <StackPanel Grid.Row="1" Grid.Column="0">
+                                            <TextBlock Text="Period jitter (µs) — min / max / avg" Style="{StaticResource FieldLabel}"/>
+                                            <TextBlock x:Name="RtJitterText" FontSize="13"/>
+                                        </StackPanel>
+                                        <StackPanel Grid.Row="1" Grid.Column="1">
+                                            <TextBlock Text="Lateness vs deadline (µs) — max / avg" Style="{StaticResource FieldLabel}"/>
+                                            <TextBlock x:Name="RtLatenessText" FontSize="13"/>
+                                        </StackPanel>
+                                        <StackPanel Grid.Row="1" Grid.Column="2">
+                                            <TextBlock Text="Frame send + receive time (µs) — min / max / avg" Style="{StaticResource FieldLabel}"/>
+                                            <TextBlock x:Name="RtScanText" FontSize="13"/>
+                                        </StackPanel>
+
+                                        <StackPanel Grid.Row="2" Grid.Column="0">
+                                            <TextBlock Text="Overruns (late by more than one cycle)" Style="{StaticResource FieldLabel}"/>
+                                            <TextBlock x:Name="RtOverrunText" FontSize="13"/>
+                                        </StackPanel>
+                                        <StackPanel Grid.Row="2" Grid.Column="1">
+                                            <TextBlock Text="Working counter errors (lost frame / slave no reply)" Style="{StaticResource FieldLabel}"/>
+                                            <TextBlock x:Name="RtWkcText" FontSize="13"/>
+                                        </StackPanel>
+                                        <StackPanel Grid.Row="2" Grid.Column="2">
+                                            <TextBlock Text="CPU migrations (must be 0)" Style="{StaticResource FieldLabel}"/>
+                                            <TextBlock x:Name="RtMigrationText" FontSize="13"/>
+                                        </StackPanel>
+                                    </Grid>
+
+                                    <StackPanel>
+                                        <TextBlock Text="Frame send lateness distribution (cycles)" Style="{StaticResource FieldLabel}"/>
+                                        <!-- 7 ô dựng trong code theo ecm::rt::LatenessBucketLimitUs -->
+                                        <Grid x:Name="RtHistogramGrid" HorizontalAlignment="Left"
+                                              Background="{StaticResource ControlFillBrush}" BorderBrush="{StaticResource ControlStrokeBrush}"
+                                              BorderThickness="1" CornerRadius="4"/>
+                                    </StackPanel>
+
+                                    <TextBlock x:Name="RtInfoText" Style="{StaticResource CaptionStyle}" TextWrapping="Wrap"/>
+                                </StackPanel>
+                            </StackPanel>
+                        </Grid>
+                    </Border>
+                </ScrollViewer>
+            </Grid>
+        </Grid>
+    </Grid>
+</UserControl>

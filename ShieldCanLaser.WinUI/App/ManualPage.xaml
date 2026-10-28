@@ -1,0 +1,366 @@
+<?xml version="1.0" encoding="utf-8"?>
+<UserControl
+    x:Class="ShieldCanLaser.ManualPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:local="using:ShieldCanLaser">
+
+    <!-- Trang Manual — máy Laser Marking: điều khiển đầy đủ 3 trục X, Y, Z (SVO/RST/Home/Jog/Inching/Move/Stop), 7 van chân
+         không + đèn CAM + xung laser thử, bảng đèn I/O, bảng mô phỏng và chẩn đoán EtherCAT. Các hàng trục, nút nozzle, đèn
+         I/O, nút lỗi driver giả lập và dòng CiA402 dựng trong code (ManualPage.xaml.cpp, Ui/ManualPageParts.*). -->
+    <UserControl.Resources>
+        <!-- Đèn bảng I/O và POT/NOT — tín hiệu bit thô: OFF xám nhạt trung tính, ON đỏ + glow (Ui/ManualPageParts). -->
+        <SolidColorBrush x:Key="LampOffBrush" Color="#FFD6D6D6"/>
+        <SolidColorBrush x:Key="LampStrokeBrush" Color="#26000000"/>
+
+        <!-- Bảng trục — Width các ô tiêu đề PHẢI khớp các ô của hàng trục (ManualAxisRow::Build). -->
+        <Style x:Key="AxisHeaderCellStyle" TargetType="Border">
+            <Setter Property="BorderBrush" Value="{StaticResource DividerBrush}"/>
+            <Setter Property="BorderThickness" Value="1,0,0,0"/>
+            <Setter Property="Margin" Value="6,0,0,0"/>
+            <Setter Property="Padding" Value="6,4,0,6"/>
+        </Style>
+        <Style x:Key="AxisHeaderTextStyle" TargetType="TextBlock">
+            <Setter Property="FontSize" Value="12"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="Foreground" Value="{StaticResource TextSecondaryBrush}"/>
+            <Setter Property="VerticalAlignment" Value="Center"/>
+        </Style>
+        <Style x:Key="AxisSectionTextStyle" TargetType="TextBlock">
+            <Setter Property="FontSize" Value="13"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="Foreground" Value="{StaticResource AccentTextBrush}"/>
+            <Setter Property="VerticalAlignment" Value="Center"/>
+        </Style>
+
+        <!-- Dòng DO bấm để đảo: template trần — hàng sát nhau, căn trái như danh sách DI; chỉ phủ mờ khi rê chuột. -->
+        <Style x:Key="IoRowButtonStyle" TargetType="Button">
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Padding" Value="0"/>
+            <Setter Property="HorizontalAlignment" Value="Stretch"/>
+            <Setter Property="HorizontalContentAlignment" Value="Left"/>
+            <Setter Property="UseSystemFocusVisuals" Value="True"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="Bd" Background="Transparent" CornerRadius="4">
+                            <ContentPresenter x:Name="ContentPresenter"
+                                              Content="{TemplateBinding Content}"
+                                              Foreground="{TemplateBinding Foreground}"
+                                              HorizontalAlignment="Left" VerticalAlignment="Center"/>
+                            <VisualStateManager.VisualStateGroups>
+                                <VisualStateGroup x:Name="CommonStates">
+                                    <VisualState x:Name="Normal"/>
+                                    <VisualState x:Name="PointerOver">
+                                        <VisualState.Setters>
+                                            <Setter Target="Bd.Background" Value="{StaticResource SubtleHoverBrush}"/>
+                                        </VisualState.Setters>
+                                    </VisualState>
+                                    <VisualState x:Name="Pressed">
+                                        <VisualState.Setters>
+                                            <Setter Target="Bd.Background" Value="{StaticResource SubtleHoverBrush}"/>
+                                        </VisualState.Setters>
+                                    </VisualState>
+                                    <VisualState x:Name="Disabled"/>
+                                </VisualStateGroup>
+                            </VisualStateManager.VisualStateGroups>
+                        </Border>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+    </UserControl.Resources>
+
+    <Grid x:Name="Root" Loaded="OnRootLoaded">
+        <!-- Cột đèn I/O 340 px — nhãn dài nhất (Consolas 11) cần ~300 px kể cả chấm đèn, khung card và thanh cuộn. -->
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="*"/>
+            <ColumnDefinition Width="340"/>
+        </Grid.ColumnDefinitions>
+
+        <!-- ScrollViewer là lưới an toàn (cuộn khi tràn, vd lúc hiện cả 2 InfoBar hoặc Bảng mô phỏng). Lề phải 8 của nội
+             dung là khe giữa hai cột; thanh cuộn nổi của WinUI nằm trong khe đó. -->
+        <ScrollViewer Grid.Column="0" VerticalScrollBarVisibility="Auto">
+            <StackPanel Margin="0,0,8,0">
+                <Border x:Name="BlockBar" Style="{StaticResource InfoBarWarningStyle}" Margin="0,0,0,8" Visibility="Collapsed">
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+                        <FontIcon Style="{StaticResource InfoBarWarningIconStyle}"/>
+                        <TextBlock x:Name="BlockText" Grid.Column="1" Style="{StaticResource InfoBarTextStyle}"/>
+                    </Grid>
+                </Border>
+
+                <!-- Status.Message — bấm Home/Move bị McFunction từ chối ghi lý do vào đây; đứng ở Manual phải thấy ngay chứ
+                     không phải chuyển qua Main mới biết. -->
+                <Border x:Name="MessageBar" Style="{StaticResource InfoBarWarningStyle}" Margin="0,0,0,8" Visibility="Collapsed">
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+                        <FontIcon Style="{StaticResource InfoBarWarningIconStyle}"/>
+                        <TextBlock x:Name="MessageText" Grid.Column="1" Style="{StaticResource InfoBarTextStyle}"/>
+                    </Grid>
+                </Border>
+
+                <!-- ══════════ Trục servo ══════════ phần trên: lệnh chung cho TẤT CẢ trục. RESET cùng McControl::RequestReset
+                     với trang Main; Về gốc cùng McControl::RequestOrigin nên cùng điều kiện chặn — lý do từ chối hiện ở
+                     InfoBar ngay trên. Phần dưới: bảng trục, mỗi trục một hàng, nút xếp thành cột theo nhóm chức năng. -->
+                <Border Style="{StaticResource CardBorderStyle}" Padding="0" Margin="0,0,0,8">
+                    <Grid>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="*"/>
+                        </Grid.RowDefinitions>
+                        <Border Style="{StaticResource CardHeaderStyle}">
+                            <TextBlock Text="Servo Axes" Style="{StaticResource SectionHeaderStyle}"/>
+                        </Border>
+                        <Border Grid.Row="1" Style="{StaticResource DividerStyle}"/>
+                        <StackPanel Grid.Row="2" Margin="12">
+                            <StackPanel Orientation="Horizontal">
+                                <Button Content="STOP ALL" Width="130" Margin="0,0,8,0" Click="OnStopAllClick"
+                                        ToolTipService.ToolTip="Stop all axes immediately."/>
+                                <Button Content="RESET" Width="110" Margin="0,0,8,0" Click="OnResetClick"
+                                        ToolTipService.ToolTip="Clear alarms whose cause is gone — same as RESET on the Main page."/>
+                                <Border Style="{StaticResource VerticalDividerStyle}" Margin="4,4,12,4"/>
+                                <Button x:Name="ServoOnAllButton" Content="SERVO ON" Width="130" Margin="0,0,8,0"
+                                        Click="OnServoOnAllClick"
+                                        ToolTipService.ToolTip="Servo on all axes that are off. Axes in alarm are skipped — press RST on that axis first."/>
+                                <Button x:Name="ServoOffAllButton" Content="SERVO OFF" Width="130" Margin="0,0,8,0"
+                                        Click="OnServoOffAllClick"
+                                        ToolTipService.ToolTip="Servo off all axes that are on."/>
+                                <Border Style="{StaticResource VerticalDividerStyle}" Margin="4,4,12,4"/>
+                                <Button Content="ORIGIN" Width="140" Click="OnOriginClick"
+                                        ToolTipService.ToolTip="Run the machine origin sequence — same as ORIGIN on the Main page. Rejected while a cycle is running or safety is blocking; reason shown in the top message bar."/>
+                            </StackPanel>
+
+                            <Border Style="{StaticResource CardDividerStyle}" Margin="-12,12,-12,4"/>
+
+                            <!-- Dòng tiêu đề cột — Width khớp các ô của hàng trục. -->
+                            <Border BorderBrush="{StaticResource DividerBrush}" BorderThickness="0,0,0,1">
+                                <StackPanel Orientation="Horizontal">
+                                    <TextBlock Width="30" Text="Axis" Style="{StaticResource AxisHeaderTextStyle}"/>
+                                    <TextBlock Width="84" Text="Position" Style="{StaticResource AxisHeaderTextStyle}"/>
+                                    <TextBlock Width="40" Text="Limit" Style="{StaticResource AxisHeaderTextStyle}"/>
+                                    <Border Width="136" Style="{StaticResource AxisHeaderCellStyle}">
+                                        <TextBlock Text="Servo" Style="{StaticResource AxisHeaderTextStyle}"/>
+                                    </Border>
+                                    <Border Width="72" Style="{StaticResource AxisHeaderCellStyle}">
+                                        <TextBlock Text="Home" Style="{StaticResource AxisHeaderTextStyle}"/>
+                                    </Border>
+                                    <Border Width="96" Style="{StaticResource AxisHeaderCellStyle}">
+                                        <TextBlock Text="Jog (hold)" Style="{StaticResource AxisHeaderTextStyle}"/>
+                                    </Border>
+                                    <Border Width="138" Style="{StaticResource AxisHeaderCellStyle}">
+                                        <TextBlock Text="Inching (step)" Style="{StaticResource AxisHeaderTextStyle}"/>
+                                    </Border>
+                                    <Border Width="146" Style="{StaticResource AxisHeaderCellStyle}">
+                                        <TextBlock Text="Move Abs (target)" Style="{StaticResource AxisHeaderTextStyle}"/>
+                                    </Border>
+                                    <Border Width="68" Style="{StaticResource AxisHeaderCellStyle}">
+                                        <TextBlock Text="Stop" Style="{StaticResource AxisHeaderTextStyle}"/>
+                                    </Border>
+                                </StackPanel>
+                            </Border>
+
+                            <!-- Đèn Z an toàn ngay trên dòng tên nhóm Z — cùng ngữ cảnh, đỡ một hàng. Z mang cụm 7 nozzle. -->
+                            <Grid Margin="0,10,0,2">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Text="Z" Style="{StaticResource AxisSectionTextStyle}"/>
+                                <StackPanel Grid.Column="1" Orientation="Horizontal">
+                                    <Ellipse x:Name="ZSafeLamp" Width="10" Height="10" VerticalAlignment="Center"/>
+                                    <TextBlock x:Name="ZSafeText" FontSize="12" Margin="6,0,0,0" VerticalAlignment="Center"
+                                               Foreground="{StaticResource TextSecondaryBrush}"/>
+                                </StackPanel>
+                            </Grid>
+                            <StackPanel x:Name="ZRows"/>
+
+                            <TextBlock Text="Gantry — X (nozzle bar), Y (trays)" Style="{StaticResource AxisSectionTextStyle}" Margin="0,12,0,2"/>
+                            <StackPanel x:Name="GantryRows"/>
+                        </StackPanel>
+                    </Grid>
+                </Border>
+
+                <!-- ══════════ Van chân không, đèn CAM, laser ══════════ 7 nozzle: nút bật/tắt van (Y003…Y009) + chấm đèn cảm biến chân
+                     không (X007…X013) ngay cạnh — thấy ngay nozzle nào đang ngậm can. Đèn CAM (Y014) bật/tắt tay để chỉnh ống kính.
+                     LASER TEST PULSE kích DO laser (Y015) một xung MarkTimeMs tại chỗ đang đứng (Routine_Calib::TestMark). -->
+                <Border Style="{StaticResource CardBorderStyle}" Padding="0" Margin="0,0,0,8">
+                    <Grid>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="*"/>
+                        </Grid.RowDefinitions>
+                        <Border Style="{StaticResource CardHeaderStyle}">
+                            <TextBlock Text="Vacuum Nozzles, CAM Light &amp; Laser" Style="{StaticResource SectionHeaderStyle}"/>
+                        </Border>
+                        <Border Grid.Row="1" Style="{StaticResource DividerStyle}"/>
+                        <StackPanel Grid.Row="2" Margin="12">
+                            <TextBlock Style="{StaticResource HintStyle}"
+                                       Text="Click a nozzle to toggle its vacuum valve; the dot beside it is the vacuum sensor (can held). Turn every valve OFF before starting Auto — the cycle refuses to start with a valve left on."/>
+                            <!-- 7 nút N1…N7 + đèn cảm biến dựng trong code (BuildNozzlePanel). -->
+                            <StackPanel x:Name="NozzlePanel" Orientation="Horizontal" Margin="0,4,0,0"/>
+                            <StackPanel Orientation="Horizontal" Margin="0,10,0,0">
+                                <Button x:Name="VacuumAllOffButton" Content="ALL VACUUM OFF" Width="150" Margin="0,0,8,0" Click="OnVacuumAllOffClick"
+                                        ToolTipService.ToolTip="Switch all 7 vacuum valves off."/>
+                                <Border Style="{StaticResource VerticalDividerStyle}" Margin="4,4,12,4"/>
+                                <Button x:Name="CamLightButton" Content="CAM LIGHT" Width="120" Margin="0,0,8,0" Click="OnCamLightClick"
+                                        ToolTipService.ToolTip="Toggle the CAM light (Y014) — for lens / exposure setup. Auto switches it on and off by itself."/>
+                                <Border Style="{StaticResource VerticalDividerStyle}" Margin="4,4,12,4"/>
+                                <Button x:Name="LaserTestButton" Content="LASER TEST PULSE" Width="170" Margin="0,0,8,0" Click="OnLaserTestClick"
+                                        ToolTipService.ToolTip="Trigger the laser DO (Y015) once at the current position: ON for MarkTimeMs of the model (at least LaserPulseMinMs), then OFF. Refused while an axis is moving."/>
+                                <TextBlock x:Name="LaserTestText" FontSize="12" VerticalAlignment="Center"
+                                           Foreground="{StaticResource TextSecondaryBrush}"/>
+                            </StackPanel>
+                        </StackPanel>
+                    </Grid>
+                </Border>
+
+                <!-- ══════════ Bảng mô phỏng ══════════ chỉ hiện khi Io là FakeIo. Không phải đồ chơi: là cách duy nhất chạy
+                     được các nhánh EMG, rèm sáng và mất kết nối mà không phải rút cáp máy thật. -->
+                <Border x:Name="SimCard" Style="{StaticResource CardBorderStyle}" Padding="0" Margin="0,0,0,8" Visibility="Collapsed">
+                    <Grid>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="*"/>
+                        </Grid.RowDefinitions>
+                        <Border Style="{StaticResource CardHeaderStyle}">
+                            <TextBlock Text="Simulation Panel — Hard Buttons, Safety Signals, Driver Faults" Style="{StaticResource SectionHeaderStyle}"/>
+                        </Border>
+                        <Border Grid.Row="1" Style="{StaticResource DividerStyle}"/>
+                        <StackPanel Grid.Row="2" Margin="12">
+                            <TextBlock Style="{StaticResource HintStyle}"
+                                       Text="Replaces the real button panel and safety circuit. Use it to test EMG, light curtain and link-loss paths without unplugging cables."/>
+                            <!-- Nút cứng nhấn-nhả (START/STOP/RESET) | tín hiệu an toàn giữ mức (EMG / rèm sáng / áp suất khí). -->
+                            <StackPanel Orientation="Horizontal">
+                                <Button Content="START" Width="110" Margin="0,0,8,8" Click="OnSimStartClick"
+                                        ToolTipService.ToolTip="Simulate START button (X000) — starts the cycle when AUTO ready, resumes when paused, confirms tray change when waiting"/>
+                                <Button Content="STOP" Width="110" Margin="0,0,8,8" Click="OnSimStopClick"
+                                        ToolTipService.ToolTip="Simulate STOP button (X001)"/>
+                                <Button Content="RESET" Width="110" Margin="0,0,8,8" Click="OnSimResetClick"
+                                        ToolTipService.ToolTip="Simulate RESET button (X003)"/>
+                                <Border Style="{StaticResource VerticalDividerStyle}" Margin="4,4,12,12"/>
+                                <Button Content="EMG" Width="90" Margin="0,0,8,8" Click="OnSimEmgClick"
+                                        ToolTipService.ToolTip="Press/release EMG (X002)"/>
+                                <Button Content="PHOTO SAFETY" Width="140" Margin="0,0,8,8" Click="OnSimCurtainClick"
+                                        ToolTipService.ToolTip="Photo safety sensor (X004) — active only when 'Photo safety sensor fitted' is enabled on the Setting page"/>
+                                <Button Content="AIR OK" Width="100" Margin="0,0,8,8" Click="OnSimAirClick"
+                                        ToolTipService.ToolTip="Air pressure switch (X014) — active only when 'Air pressure sensor fitted' is enabled on the Setting page"/>
+                            </StackPanel>
+                            <!-- Cảm biến giữ mức của chu trình: 2 tray. Cảm biến chân không tự bám theo van — trừ nozzle đặt "hút trượt"
+                                 (N1…N7 dựng trong code) để chạy nhánh hút hụt / ô NG. -->
+                            <StackPanel Orientation="Horizontal">
+                                <Button Content="TRAY 1" Width="90" Margin="0,0,8,8" Click="OnSimTray1Click"
+                                        ToolTipService.ToolTip="Tray 1 present/absent (X005)"/>
+                                <Button Content="TRAY 2" Width="90" Margin="0,0,8,8" Click="OnSimTray2Click"
+                                        ToolTipService.ToolTip="Tray 2 present/absent (X006)"/>
+                                <Border Style="{StaticResource VerticalDividerStyle}" Margin="4,4,12,12"/>
+                                <TextBlock Text="Pick miss:" FontSize="12" Margin="0,0,8,8" VerticalAlignment="Center"
+                                           Foreground="{StaticResource TextSecondaryBrush}"/>
+                                <StackPanel x:Name="SimPickFailPanel" Orientation="Horizontal"/>
+                            </StackPanel>
+
+                            <Border Style="{StaticResource CardDividerStyle}" Margin="-12,4,-12,12"/>
+
+                            <TextBlock Text="Simulated Driver Faults (click again to clear)" Style="{StaticResource SubHeaderStyle}"/>
+                            <!-- Mỗi trục mô phỏng: tên | ALM | Ngắt — lưới 5 cột (3 trục nằm trên một hàng). -->
+                            <Grid x:Name="SimAxisGrid" HorizontalAlignment="Left">
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="Auto"/>
+                                </Grid.RowDefinitions>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                            </Grid>
+                        </StackPanel>
+                    </Grid>
+                </Border>
+
+                <!-- ══════════ Chẩn đoán EtherCAT ══════════ công cụ cho ngày đầu ra máy: xem giá trị THÔ đọc về từ thiết bị. -->
+                <Border Style="{StaticResource CardBorderStyle}" Padding="0">
+                    <Grid>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="*"/>
+                        </Grid.RowDefinitions>
+                        <Border Style="{StaticResource CardHeaderStyle}">
+                            <TextBlock Text="EtherCAT Diagnostics" Style="{StaticResource SectionHeaderStyle}"/>
+                        </Border>
+                        <Border Grid.Row="1" Style="{StaticResource DividerStyle}"/>
+                        <StackPanel Grid.Row="2" Margin="12">
+                            <TextBlock Style="{StaticResource HintStyle}"
+                                       Text="Raw values read directly from the bus. Use to check the I/O map against the wiring diagram and each driver's CiA402 statusword: servo on / home / trigger a fault and watch which bits change (OpEn = Operation Enabled, b12 = Homing Attained during homing)."/>
+                            <TextBlock x:Name="BusText" FontSize="12" TextWrapping="Wrap"/>
+                            <Border Style="{StaticResource CardDividerStyle}"/>
+                            <TextBlock x:Name="RawDiText" FontFamily="Consolas" FontSize="12"/>
+                            <TextBlock x:Name="RawDoText" FontFamily="Consolas" FontSize="12" Margin="0,2,0,0"/>
+                            <Border Style="{StaticResource CardDividerStyle}"/>
+                            <!-- Một dòng CiA402 mỗi trục EtherCAT (EtherCatAxis::DiagnosticText); trống khi mô phỏng. -->
+                            <StackPanel x:Name="DriveStatusPanel"/>
+                        </StackPanel>
+                    </Grid>
+                </Border>
+            </StackPanel>
+        </ScrollViewer>
+
+        <!-- ══════════ Bảng đèn I/O ══════════ -->
+        <Grid Grid.Column="1">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="*"/>
+                <RowDefinition Height="*"/>
+            </Grid.RowDefinitions>
+
+            <Border Grid.Row="0" Style="{StaticResource CardBorderStyle}" Padding="0" Margin="0,0,0,8">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*"/>
+                    </Grid.RowDefinitions>
+                    <Border Style="{StaticResource CardHeaderStyle}">
+                        <TextBlock Text="Inputs (DI)" Style="{StaticResource SectionHeaderStyle}"/>
+                    </Border>
+                    <Border Grid.Row="1" Style="{StaticResource DividerStyle}"/>
+                    <ScrollViewer Grid.Row="2" VerticalScrollBarVisibility="Auto" Margin="4,6,0,6">
+                        <StackPanel x:Name="DiList"/>
+                    </ScrollViewer>
+                </Grid>
+            </Border>
+
+            <!-- Bấm vào một dòng DO để đảo ngõ ra — thử đi dây Remote IO lúc ra máy. Đèn tháp/còi/đèn nút do vòng quét tự
+                 ghi lại mỗi chu kỳ nên đảo tay sẽ bị ghi đè ngay. -->
+            <Border Grid.Row="1" Style="{StaticResource CardBorderStyle}" Padding="0">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*"/>
+                    </Grid.RowDefinitions>
+                    <Border Style="{StaticResource CardHeaderStyle}">
+                        <TextBlock Text="Outputs (DO) — click to toggle" Style="{StaticResource SectionHeaderStyle}"/>
+                    </Border>
+                    <Border Grid.Row="1" Style="{StaticResource DividerStyle}"/>
+                    <ScrollViewer Grid.Row="2" VerticalScrollBarVisibility="Auto" Margin="4,6,0,6">
+                        <StackPanel x:Name="DoList"/>
+                    </ScrollViewer>
+                </Grid>
+            </Border>
+        </Grid>
+    </Grid>
+</UserControl>

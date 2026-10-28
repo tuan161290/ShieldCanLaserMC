@@ -1,0 +1,63 @@
+<?xml version="1.0" encoding="utf-8"?>
+<UserControl
+    x:Class="ShieldCanLaser.AlarmPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:local="using:ShieldCanLaser">
+
+    <!-- Trang Alarm riêng (Tuấn yêu cầu, 2026-09-10): xem được cả alarm đang tác động lẫn lịch sử mà không
+         phải che các trang khác. Hai bảng dựng trong code (ui::AlarmTable). -->
+    <Grid x:Name="Root" Loaded="OnRootLoaded">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="*"/>
+        </Grid.RowDefinitions>
+
+        <!-- ══════════ Alarm đang tác động ══════════ — bảng | đường kẻ | dải nút xử lý -->
+        <Border Grid.Row="0" Style="{StaticResource CardBorderStyle}" Padding="0" Margin="0,0,0,8">
+            <Grid>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="*"/>
+                    <RowDefinition Height="Auto"/>
+                </Grid.RowDefinitions>
+                <Border Style="{StaticResource CardHeaderStyle}">
+                    <TextBlock Text="Active Alarms" Style="{StaticResource SectionHeaderStyle}"/>
+                </Border>
+                <Border Grid.Row="1" Style="{StaticResource DividerStyle}"/>
+                <Border x:Name="ActiveHost" Grid.Row="2"/>
+                <Border Grid.Row="3" BorderBrush="{StaticResource DividerBrush}" BorderThickness="0,1,0,0" Padding="12,10">
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+                        <TextBlock x:Name="MessageText" VerticalAlignment="Center" Margin="0,0,16,0" TextWrapping="Wrap"
+                                   Foreground="{StaticResource CriticalBrush}"/>
+                        <StackPanel Grid.Column="1" Orientation="Horizontal">
+                            <Button Content="BUZZER OFF" Width="100" Margin="0,0,8,0" Click="OnMuteClick"/>
+                            <Button Content="RESET" Width="120" Style="{StaticResource PrimaryButton}" Click="OnResetClick"/>
+                        </StackPanel>
+                    </Grid>
+                </Border>
+            </Grid>
+        </Border>
+
+        <!-- ══════════ Lịch sử alarm — tới 200 dòng gần nhất, kể cả đã hết ══════════ -->
+        <Border Grid.Row="1" Style="{StaticResource CardBorderStyle}" Padding="0">
+            <Grid>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="*"/>
+                </Grid.RowDefinitions>
+                <Border Style="{StaticResource CardHeaderStyle}">
+                    <TextBlock Text="Alarm History (last 200 entries)" Style="{StaticResource SectionHeaderStyle}"/>
+                </Border>
+                <Border Grid.Row="1" Style="{StaticResource DividerStyle}"/>
+                <Border x:Name="HistoryHost" Grid.Row="2"/>
+            </Grid>
+        </Border>
+    </Grid>
+</UserControl>

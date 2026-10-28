@@ -1,0 +1,8 @@
+namespace ShieldCanLaser
+{
+    [default_interface]
+    runtimeclass VisionEditPage : Microsoft.UI.Xaml.Controls.UserControl
+    {
+        VisionEditPage();
+    }
+}

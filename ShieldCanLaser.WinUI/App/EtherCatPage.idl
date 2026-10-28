@@ -1,0 +1,8 @@
+namespace ShieldCanLaser
+{
+    [default_interface]
+    runtimeclass EtherCatPage : Microsoft.UI.Xaml.Controls.UserControl
+    {
+        EtherCatPage();
+    }
+}
