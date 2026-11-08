@@ -39,15 +39,22 @@ int RunInfraTests()
     CHECK_NEAR(AxisAngle::ShortestDelta(350, 10), 20.0, 1e-9);
     CHECK_NEAR(AxisAngle::ShortestDelta(10, 350), -20.0, 1e-9);
     CHECK_NEAR(AxisAngle::Distance(10, 350), 20.0, 1e-9);
-    CHECK(IoMap::BtnStart == 0 && IoMap::BtnStop == 1 && IoMap::EmgOk == 2 && IoMap::BtnReset == 3 && IoMap::LightCurtainOk == 4);
-    CHECK(IoMap::TrayPresent(1) == 5 && IoMap::TrayPresent(2) == 6 && IoMap::NozzleCount == 7 && IoMap::TrayCount == 2);
-    CHECK(IoMap::VacuumSensor(1) == 7 && IoMap::VacuumSensor(7) == 13 && IoMap::AirOk == 14);
-    CHECK(IoMap::DoVacuum(1) == 3 && IoMap::DoVacuum(7) == 9 && IoMap::DoLampRed == 10 && IoMap::DoBuzzer == 13 && IoMap::DoCamLight == 14 && IoMap::DoLaserTrigger == 15);
+    // Danh sách IO theo Tuấn 2026-11-03 — đối chiếu từng chân với bảng bàn giao.
+    CHECK(IoMap::BtnStart == 0 && IoMap::BtnStop == 1 && IoMap::EmgOk == 2 && IoMap::BtnStart2 == 3);
+    CHECK(IoMap::DiLaserReady == 4 && IoMap::DiLaserBusy == 5 && IoMap::DiLaserEnd == 6);
+    CHECK(IoMap::TrayPresent(1) == 8 && IoMap::TrayPresent(2) == 9 && IoMap::LightCurtainOk == 10 && IoMap::NozzleCount == 7 && IoMap::TrayCount == 2);
+    CHECK(IoMap::VacuumSensor(1) == 11 && IoMap::VacuumSensor(7) == 17 && IoMap::VacuumSensor(IoMap::VacuumChannelCount) == 18);
+    CHECK(IoMap::DoLampStartBtn == 0 && IoMap::DoLampStopBtn == 1 && IoMap::DoLampStartBtn2 == 2 && IoMap::LaserStart == 3 && IoMap::LaserStop == 4);
+    CHECK(IoMap::DoVacuum(1) == 6 && IoMap::DoVacuum(5) == 10 && IoMap::DoVacuum(6) == 21 && IoMap::DoVacuum(7) == 22 && IoMap::DoVacuum(8) == 23);
+    CHECK(IoMap::DoTowerLampRed == 12 && IoMap::DoTowerLampYellow == 13 && IoMap::DoTowerLampGreen == 14 && IoMap::DoBuzzer == 15);
+    CHECK(IoMap::DoLightCam == 18 && IoMap::ZAxisBrakeRelease == 20 && IoMap::VacuumBlower(1) == 24 && IoMap::VacuumBlower(8) == 31);
     CHECK(IoMap::DiNames().size() == 32 && IoMap::DoNames().size() == 32 && IoMap::DiCount == 32 && IoMap::DoCount == 32);
     CHECK(IoMap::DiLabel(0) == "X000" && IoMap::DiLabel(31) == "X031" && IoMap::DoLabel(0) == "Y000" && IoMap::DoLabel(31) == "Y031");
-    CHECK(IoMap::DiNames()[6] == "Tray 2 sensor" && IoMap::DiNames()[4] == "Photo safety sensor OK"
-          && IoMap::DiNames()[13] == "Vacuum sensor N7" && IoMap::DiNames()[15] == "(spare)");
-    CHECK(IoMap::DoNames()[13] == "Buzzer" && IoMap::DoNames()[9] == "Solenoid vacuum N7" && IoMap::DoNames()[15] == "Laser trigger" && IoMap::DoNames()[16] == "(spare)");
+    CHECK(IoMap::DiNames()[3] == "START button #2" && IoMap::DiNames()[6] == "Laser end" && IoMap::DiNames()[7] == "(spare)" && IoMap::DiNames()[9] == "Tray 2 sensor"
+          && IoMap::DiNames()[10] == "Photo safety sensor OK" && IoMap::DiNames()[17] == "Vacuum sensor N7" && IoMap::DiNames()[18] == "(spare) Vacuum sensor N8" && IoMap::DiNames()[19] == "(spare)");
+    CHECK(IoMap::DoNames()[2] == "START button #2 lamp" && IoMap::DoNames()[3] == "Laser start" && IoMap::DoNames()[5] == "(spare)" && IoMap::DoNames()[10] == "Solenoid vacuum N5"
+          && IoMap::DoNames()[15] == "Buzzer" && IoMap::DoNames()[18] == "CAM light" && IoMap::DoNames()[20] == "Z axis brake release" && IoMap::DoNames()[22] == "Solenoid vacuum N7"
+          && IoMap::DoNames()[23] == "(spare) Solenoid vacuum N8" && IoMap::DoNames()[30] == "Vacuum blower N7" && IoMap::DoNames()[31] == "(spare) Vacuum blower N8");
     CHECK(AlarmCode::ForAxis("Z", AxisFault::HomeTimeout) == 2205 && AlarmCode::ForAxis("Y", AxisFault::Disconnected) == 2100
           && AlarmCode::ForAxis("Q", AxisFault::HomeTimeout) == 1099);
     std::string ax; AxisFault af;
@@ -71,11 +78,9 @@ int RunInfraTests()
     auto x = def->GetAxis("X");
     CHECK(x->MoveSpeed == 300 && x->MoveSpeedMid() == 150 && x->MoveSpeedLow() == 60 && x->SoftLimitPos == 600 && x->ExpectedProductCode == 0x60380005u);
     CHECK(def->GetAxis("Y")->SoftLimitPos == 400 && def->GetAxis("Z")->StandbyPos == 5 && def->GetAxis("Z")->SoftLimitPos == 100);
-    CHECK(def->SimulationMode && !def->VisionSimulation && def->ZSafe == 10.0 && def->ControlTickMs == 20 && def->HasTraySensors && !def->HasAirSensor);
-    CHECK(def->VisionOutputs.FlowLocateCan == "LocateCan" && def->VisionOutputs.GvAxisX == "X_mm" && def->VisionOutputs.GvAxisZ == "Z_mm"
-          && def->VisionOutputs.GvNozzle == "Nozzle" && def->VisionOutputs.GvIsLocate == "IsLocate");
-    CHECK(def->LaserComp.GainX == -1 && def->LaserComp.GainZ == -1 && def->LaserComp.MaxCompMm == 3.0 && def->LaserComp.LaserPulseMinMs == 50);
-    CHECK(def->VisionCalib.CalibNozzle == 1 && def->VisionCalib.GridStepZ == 5.0 && def->MachineName == "Shield CAN Laser Marking MC");
+    CHECK(def->SimulationMode && !def->VisionSimulation && def->ZSafe == 10.0 && def->ControlTickMs == 20 && def->HasTraySensors);
+    CHECK(def->VisionOutputs.InspectPath == "Flow1.GroupInspection" && def->VisionOutputs.OutImage == "ImageData" && def->VisionOutputs.RenderCam.empty());
+    CHECK(def->LaserPulseMinMs == 50 && def->MachineName == "Shield CAN Laser Marking MC");
 
     // ── Lưu → nạp lại: so toàn bộ chuỗi JSON (mọi trường) ──
     auto sys = McDataManager::SysData();
@@ -84,13 +89,9 @@ int RunInfraTests()
     sys->VisionSimulation = true;
     sys->NetworkAdapter = "\\Device\\NPF_{ABC}";
     sys->ZSafe = 12.5;
-    sys->HasAirSensor = true;
-    sys->VisionOutputs.RenderCam = "LocateCan.Module";
-    sys->VisionOutputs.FlowLocateCan = "LC";
-    sys->VisionCalib.CenterSet = true;
-    sys->VisionCalib.CalibNozzle = 4;
-    sys->LaserComp.GainX = 1.0;
-    sys->LaserComp.MaxCompMm = 2.5;
+    sys->VisionOutputs.RenderCam = "Insp.Module";
+    sys->VisionOutputs.InspectPath = "Insp.GroupA";
+    sys->LaserPulseMinMs = 80;
     sys->GetAxis("Y")->TravelPerRotation = 5.0;
     sys->GetAxis("Y")->PulsesPerRotation = 10000.0;
     sys->GetAxis("Y")->RecomputeCountsPerUnit();
@@ -111,11 +112,16 @@ int RunInfraTests()
     McDataManager::LoadSystemData();
     auto re = McDataManager::SysData();
     CHECK(re != sys && re->ToJsonText() == before);
-    CHECK(re->VisionSimulation && re->HasAirSensor && re->GetAxis("Y")->TravelPerRotation == 5.0 && re->GetAxis("Y")->MoveSpeedLow() == 33.0);
+    CHECK(re->VisionSimulation && re->GetAxis("Y")->TravelPerRotation == 5.0 && re->GetAxis("Y")->MoveSpeedLow() == 33.0);
     CHECK(re->GetAxis("Y")->PulsesPerRotation == 10000.0 && re->GetAxis("Y")->CountsPerUnit == 2000.0 && !re->GetAxis("X")->PulsesPerRotation);
-    CHECK(re->VisionOutputs.FlowLocateCan == "LC" && re->VisionCalib.CalibNozzle == 4 && re->LaserComp.GainX == 1.0 && re->LaserComp.MaxCompMm == 2.5);
+    CHECK(re->VisionOutputs.InspectPath == "Insp.GroupA" && re->VisionOutputs.RenderCam == "Insp.Module" && re->LaserPulseMinMs == 80);
     CHECK(before.find("IsConfigured") == std::string::npos && before.find("\"TravelPerRotation\": 5.0") != std::string::npos
-          && before.find("\"LaserComp\"") != std::string::npos);
+          && before.find("\"LaserPulseMinMs\": 80") != std::string::npos && before.find("\"InspectPath\": \"Insp.GroupA\"") != std::string::npos);
+    // system.json cũ (bản có bù vision): khoá đã bỏ bị lờ đi, đường dẫn kiểm tra lấy mặc định.
+    {
+        auto old = SystemData::FromJsonText("{ \"VisionOutputs\": { \"FlowLocateCan\": \"LC\", \"GvAxisX\": \"X_mm\" }, \"LaserComp\": { \"GainX\": 1 }, \"VisionCalib\": {} }");
+        CHECK(old && old->VisionOutputs.InspectPath == "Flow1.GroupInspection" && old->LaserPulseMinMs == 50);
+    }
 
     // ── JSON dạng C#: thiếu khoá, khoá lạ, thiếu trục, trục lạ, sai thứ tự ──
     base::WriteAllText(AppPaths::SystemFile(), "\xEF\xBB\xBF{\r\n \"MachineName\": \"CS\", \"Unknown\": {\"a\": 1}, \"SimulationMode\": false,\r\n"
@@ -156,22 +162,35 @@ int RunInfraTests()
     p->Set("Z", 1.5); p->Set("Y", 90); p->Set("X", 2.25); p->Remove("Y");
     p->TaughtAt = std::chrono::system_clock::now();
     m->Description = "mô tả";
-    m->Calib.Nozzle(3).RefX = 0.25; m->Calib.Nozzle(3).RefZ = -0.5; m->Calib.Nozzle(3).RefAt = std::chrono::system_clock::now();
-    m->Calib.Nozzle(7).TrimX = 0.1;
-    m->Calib.GridVerifiedAt = std::chrono::system_clock::now();
+    m->Trim.Nozzle(3).Z = -0.5;
+    m->Trim.Nozzle(7).X = 0.1;
     CHECK(McDataManager::SaveModel("M1") && McDataManager::CopyModel("M1", "M2") && McDataManager::LoadModel("M2"));
     auto m2 = McDataManager::Model();
     auto p2 = m2->FindPosition("Điểm thử");
     CHECK(m2->Name == "M2" && m2->Description == "mô tả" && p2 && p2->Taught() && p2->Pos.size() == 2 && p2->Pos[0].first == "Z");
     CHECK(m2->Auto.TrayRows == 3 && m2->Auto.VacuumOnMs == 20 && !m2->Auto.UseVision && m2->Auto.UseLaser && m2->Auto.MarkTimeMs == 250);
-    CHECK(m2->Calib.GridVerified() && m2->Calib.Nozzle(3).RefMeasured() && m2->Calib.Nozzle(3).RefX == 0.25 && m2->Calib.Nozzle(3).RefZ == -0.5
-          && !m2->Calib.Nozzle(2).RefMeasured() && m2->Calib.Nozzle(7).TrimX == 0.1 && m2->Calib.Nozzle(0).RefX == 0.25 == false);
+    CHECK(m2->Trim.Nozzle(3).Z == -0.5 && m2->Trim.Nozzle(3).X == 0 && m2->Trim.Nozzle(7).X == 0.1 && m2->Trim.Nozzle(2).X == 0
+          && m2->Trim.Nozzle(0).X == 0 && m2->Trim.Nozzle(9).X == 0.1);   // ngoài 1…7 kẹp về 1 / 7
+    // Model cũ cất trim trong khoá "Calib" cùng hằng số hiệu chuẩn đã bỏ: chỉ lấy lại trim.
+    {
+        auto legacy = ModelData::FromJsonText("{ \"Name\": \"L\", \"Calib\": { \"GridVerifiedAt\": \"2026-10-01T08:00:00\", "
+                                              "\"Nozzles\": [ { \"RefX\": 1, \"TrimX\": 0.2, \"TrimZ\": -0.1 }, { \"TrimX\": 0.3 } ] } }");
+        CHECK(legacy && legacy->Trim.Nozzle(1).X == 0.2 && legacy->Trim.Nozzle(1).Z == -0.1 && legacy->Trim.Nozzle(2).X == 0.3 && legacy->Trim.Nozzle(3).X == 0);
+        CHECK(legacy->ToJsonText().find("\"Calib\"") == std::string::npos && legacy->ToJsonText().find("\"Trim\"") != std::string::npos);
+    }
     CHECK(p2->Get("X") == 2.25 && p2->Get("Y", -1) == -1 && *p2->TaughtAt == *p->TaughtAt);
     CHECK(McDataManager::ListModels() == (std::vector<std::string>{ "DEFAULT", "M1", "M2" }) && McDataManager::RunData()->RecentModelName == "M2");
     CHECK(McDataManager::DeleteModel("M1") && McDataManager::ListModels().size() == 2);
-    McDataManager::RunData()->RecordCycle(10.0, 4);
+    McDataManager::RunData()->FinishCycle(5000);         // không có chu kỳ đang chạy: không làm gì
+    CHECK(McDataManager::RunData()->LastCycleSec == 0 && !McDataManager::RunData()->CycleHoldLast);
+    McDataManager::RunData()->StartCycleClock(1000);
+    McDataManager::RunData()->StartCycleClock(5000);     // đang chạy: giữ giờ bắt đầu
+    McDataManager::RunData()->CycleOk = 4;
+    McDataManager::RunData()->FinishCycle(11000);        // 10 s, 4 can OK
     McDataManager::RunData()->CountOk = 7;
-    McDataManager::RunData()->TrayRowsDone[1] = 5;
+    McDataManager::RunData()->Trays[1].MarkDone(4);
+    McDataManager::RunData()->Trays[1].MarkDone(1);    // chạy lẻ: ô xong không liền nhau, không theo thứ tự
+    McDataManager::RunData()->Trays[1].Toggle(6);      // ô chọn không lưu
     McDataManager::RunData()->LastRowResult = { 2, 3, 2, 2, 2, 2, 3 };
     McDataManager::RunData()->LastRowTray = 2;
     McDataManager::RunData()->LastRowIndex = 5;
@@ -179,10 +198,39 @@ int RunInfraTests()
     auto savedAt = McDataManager::RunData()->SavedAt;
     McDataManager::LoadRunningData();
     auto run = McDataManager::RunData();
-    CHECK(run->CountOk == 7 && run->RecentProductTimes.size() == 4 && run->AvgProductTimeSec == 2.5 && run->SavedAt == savedAt && run->RecentModelName == "M2");
-    CHECK(run->TrayRowsDone[0] == 0 && run->TrayRowsDone[1] == 5 && run->LastRowResult.size() == 7 && run->LastRowResult[1] == 3 && run->LastRowTray == 2 && run->LastRowIndex == 5);
+    CHECK(run->CountOk == 7 && run->LastCycleSec == 10 && run->LastCycleProducts == 4 && run->LastTackSec() == 2.5 && run->CycleHoldLast && run->SavedAt == savedAt && run->RecentModelName == "M2");
+    CHECK(run->Trays[0].Done().empty() && run->Trays[1].Done() == (std::vector<int>{ 1, 4 }) && !run->HasCellSelection()
+          && run->LastRowResult.size() == 7 && run->LastRowResult[1] == 3 && run->LastRowTray == 2 && run->LastRowIndex == 5);
+    CHECK(run->Trays[1].IsDone(4) && !run->Trays[1].IsDone(2) && run->Trays[1].DoneCount(7) == 2 && run->Trays[1].DoneCount(3) == 1);
+    {
+        TrayCells book;
+        book.Toggle(5);
+        book.Toggle(2);
+        book.Toggle(5);
+        book.Toggle(3);
+        CHECK(book.Selected() == (std::vector<int>{ 2, 3 }) && book.HasSelection() && book.IsSelected(3) && !book.IsSelected(5));
+        book.SetSelected({ 6, 1, 6 }, true);             // kéo chọn: không trùng, vẫn tăng dần
+        CHECK(book.Selected() == (std::vector<int>{ 1, 2, 3, 6 }));
+        book.SetSelected({ 1, 6, 9 }, false);
+        CHECK(book.Selected() == (std::vector<int>{ 2, 3 }));
+        book.MarkDone(2);                                // xong thì tự bỏ chọn
+        book.MarkDone(2);
+        CHECK(book.Selected() == (std::vector<int>{ 3 }) && book.Done() == (std::vector<int>{ 2 }));
+        book.ClearSelection();
+        book.ClearDone();
+        CHECK(!book.HasSelection() && book.DoneCount(7) == 0);
+        book.LoadDone({ 4, -1, 2, 4 });                  // file sửa tay: trùng, âm
+        CHECK(book.Done() == (std::vector<int>{ 2, 4 }));
+    }
     run->ResetTrays();
-    CHECK(run->TrayRowsDone[1] == 0 && run->LastRowResult.empty() && run->LastRowTray == 0);
+    CHECK(run->Trays[1].Done().empty() && run->LastRowResult.empty() && run->LastRowTray == 0);
+    run->StartCycleClock(20000);                         // chu kỳ mới: bỏ giữ số cuối, đếm lại, số chu kỳ trước còn nguyên
+    CHECK(run->CycleStartedAtMs == 20000 && run->CycleOk == 0 && !run->CycleHoldLast && run->LastCycleProducts == 4);
+    run->CycleOk = 3;
+    run->ResetTrays();                                   // thay tray: chu kỳ đang chạy bỏ, không tính
+    CHECK(run->CycleStartedAtMs == 0 && run->CycleOk == 0 && run->LastCycleProducts == 4);
+    run->ResetCounters();
+    CHECK(run->LastCycleSec == 0 && run->LastCycleProducts == 0 && !run->CycleHoldLast && run->LastTackSec() == 0);
 
     // ── Điểm chia đều giữa đầu và cuối: hàng tray, CAM, laser ──
     {
@@ -236,12 +284,15 @@ int RunInfraTests()
     AlarmCatalog::Load();
     std::string copied;
     CHECK(AlarmCatalog::Loaded() && base::ReadAllText(AppPaths::AlarmsFile(), copied) && copied == tplText);
-    for (int code : { 1000, 1001, 1002, 1003, 1099, 1100, 1103, 1105, 3000, 3001, 3002, 3100, 3101, 4000, 4001, 4002, 4003, 4004, 4005, 4006,
-                      4010, 4011, 4090, 5001, 5002, 5003, 5004, 5005, 5006, 5010, 5020, 5030, 5031, 6000, 6001, 6002 })
+    for (int code : { 1000, 1001, 1002, 1003, 1099, 1100, 1103, 1105, 3000, 3001, 3002, 3100, 3101, 4000, 4001, 4002, 4003, 4004, 4005,
+                      5001, 5002, 5003, 5005, 5006, 5010, 5020, 5030, 5031, 6000, 6001, 6002 })
         CHECK_MSG(AlarmCatalog::Get(code).Vi.find("chưa định nghĩa:") == std::string::npos && !AlarmCatalog::Get(code).Remedy.empty(), std::to_string(code));
     CHECK(AlarmCatalog::Get(1100).Vi == "DỪNG KHẨN CẤP (EMG)" && AlarmCatalog::Get(1100).Level == EAlarmLevel::Fatal);
     CHECK(AlarmCatalog::Get(2205).Vi == "Trục Z: về gốc thất bại" && AlarmCatalog::Get(2204).Level == EAlarmLevel::Warning);
-    CHECK(AlarmCatalog::Get(5006).Level == EAlarmLevel::Warning && AlarmCatalog::Get(5004).Level == EAlarmLevel::Warning);
+    CHECK(AlarmCatalog::Get(5006).Level == EAlarmLevel::Warning && AlarmCatalog::Get(5006).En == "Vision: inspection could not run — cell NG");
+    // Mã của phần bù / hiệu chuẩn vision đã bỏ (2026-11-08) không còn trong danh mục.
+    for (int code : { 4006, 4010, 4011, 4090, 5004 })
+        CHECK_MSG(AlarmCatalog::Get(code).Vi == "Alarm chưa định nghĩa: " + std::to_string(code), std::to_string(code));
     CHECK(AlarmCatalog::Get(7777).Vi == "Alarm chưa định nghĩa: 7777" && AlarmCatalog::Get(7777).Level == EAlarmLevel::Error);
     base::WriteAllText(AppPaths::AlarmsFile(), "{ \"codes\": { \"1100\": { \"level\": 1, \"vi\": \"EMG của tôi\" }, \"9\": { \"level\": \"info\", \"vi\": \"riêng\" } } }");
     AlarmCatalog::Load();
@@ -289,16 +340,26 @@ int RunInfraTests()
     LogWorker::Instance().Flush();
     auto list = LogWorker::Instance().LogList();
     CHECK(LogWorker::Instance().Version() == lv + 1 && !list.empty() && list[0].Message == "Dòng\tthử\r\ntiếng Việt" && list[0].Source == "Test");
-    FILE* f = _wfopen((day / "app.log").c_str(), L"rb");
-    std::string raw(1 << 20, '\0');
-    raw.resize(f ? fread(raw.data(), 1, raw.size(), f) : 0);
-    if (f) fclose(f);
     std::string expect = FormatLocal(list[0].UpdateTime, "yyyy-MM-dd HH:mm:ss.fff") + "\tWARNING\tTest\tDòng thử  tiếng Việt\r\n";
+    std::string raw;
+    // Luồng ghi có ưu tiên thấp và Flush chỉ chờ tối đa 500 ms: máy bận thì một lần Flush có thể chưa đủ.
+    for (int i = 0; i < 20; ++i)
+    {
+        FILE* f = _wfopen((day / "app.log").c_str(), L"rb");
+        raw.assign(1 << 20, '\0');
+        raw.resize(f ? fread(raw.data(), 1, raw.size(), f) : 0);
+        if (f) fclose(f);
+        if (base::EndsWith(raw, expect)) break;
+        LogWorker::Instance().Flush();
+    }
     CHECK(base::StartsWith(raw, "\xEF\xBB\xBF" "20") && base::EndsWith(raw, expect) && raw.find("bỏ qua") == std::string::npos);
     CHECK(raw.find("\tINFO\tData\tsystem.json loaded\r\n") != std::string::npos && raw.find("\tERROR\tSafety\tALARM 1103 [Error] Air pressure low  (root cause)\r\n") != std::string::npos);
     auto dayLines = LogWorker::ReadDay(AppPaths::Root(), std::chrono::system_clock::now());
     CHECK(!dayLines.empty() && dayLines.back().Level == LogLevel::Warning && dayLines.back().Message == "Dòng thử  tiếng Việt");
-    CHECK(std::chrono::abs(dayLines.back().UpdateTime - list[0].UpdateTime) < std::chrono::milliseconds(2));
+    if (!dayLines.empty())
+    {
+        CHECK(std::chrono::abs(dayLines.back().UpdateTime - list[0].UpdateTime) < std::chrono::milliseconds(2));
+    }
 
     // ── UiThread / SingleInstanceGuard ──
     int ran = 0;

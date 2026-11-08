@@ -38,7 +38,7 @@ namespace winrt::ShieldCanLaser::implementation
         ui::SetText(MessageText(), scs::McControl::Status().Message());
     }
 
-    // Cùng đường với nút RESET trên thanh tab và nút RESET vật lý: McControl quyết định xoá được alarm nào.
+    // Cùng đường với nút RESET trên thanh tab: McControl quyết định xoá được alarm nào.
     void AlarmPage::OnResetClick(WF::IInspectable const&, RoutedEventArgs const&)
     {
         scs::McControl::RequestReset();

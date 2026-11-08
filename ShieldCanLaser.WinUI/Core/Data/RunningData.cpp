@@ -1,5 +1,8 @@
 #include "Data/RunningData.h"
 
+#include <algorithm>
+#include <chrono>
+
 #include "Utility/JsonHelper.h"
 
 namespace scs
@@ -7,30 +10,41 @@ namespace scs
     using jsonx::json;
     using jsonx::Get;
 
-    void RunningData::RecordCycle(double sec, int products)
+    int64_t RunningData::NowMs()
     {
-        if (sec <= 0.01 || products <= 0) return;
-        LastCycleSec = sec;
-        LastProductTimeSec = sec / products;
-        std::vector<double> list(RecentProductTimes);
-        for (int i = 0; i < products; i++) list.push_back(LastProductTimeSec);
-        if ((int)list.size() > CycleAvgWindow) list.erase(list.begin(), list.end() - CycleAvgWindow);
-        double sum = 0;
-        for (double t : list) sum += t;
-        AvgProductTimeSec = sum / (double)list.size();
-        RecentProductTimes = std::move(list);
+        return std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
+    }
+
+    void RunningData::StartCycleClock(int64_t nowMs)
+    {
+        if (CycleStartedAtMs != 0) return;
+        CycleStartedAtMs = nowMs;
+        CycleOk = 0;
+        CycleHoldLast = false;
+    }
+
+    void RunningData::FinishCycle(int64_t nowMs)
+    {
+        if (CycleStartedAtMs == 0) return;
+        LastCycleSec = std::max(0.0, (double)(nowMs - CycleStartedAtMs) / 1000.0);
+        LastCycleProducts = CycleOk;
+        CycleStartedAtMs = 0;
+        CycleHoldLast = true;
     }
 
     void RunningData::ResetCounters()
     {
         CountOk = CountNg = CountTotal = ConsecutiveNg = 0;
-        LastProductTimeSec = AvgProductTimeSec = LastCycleSec = 0;
-        RecentProductTimes.clear();
+        LastCycleSec = 0;
+        LastCycleProducts = 0;
+        CycleHoldLast = false;
     }
 
     void RunningData::ResetTrays()
     {
-        TrayRowsDone[0] = TrayRowsDone[1] = 0;
+        for (auto& tray : Trays) tray.ClearDone();
+        CycleStartedAtMs = 0;
+        CycleOk = 0;
         LastRowResult.clear();
         LastRowTray = LastRowIndex = 0;
     }
@@ -48,7 +62,7 @@ namespace scs
         j["SavedAt"] = ToIsoString(SavedAt);
         j["AutoState"] = (int)AutoState;
         j["UnsafePause"] = UnsafePause;
-        j["TrayRowsDone"] = json::array({ TrayRowsDone[0], TrayRowsDone[1] });
+        j["TrayDoneCells"] = json::array({ Trays[0].Done(), Trays[1].Done() });
         j["LastRowResult"] = LastRowResult;
         j["LastRowTray"] = LastRowTray;
         j["LastRowIndex"] = LastRowIndex;
@@ -56,10 +70,9 @@ namespace scs
         j["CountNg"] = CountNg;
         j["CountTotal"] = CountTotal;
         j["ConsecutiveNg"] = ConsecutiveNg;
-        j["LastProductTimeSec"] = LastProductTimeSec;
-        j["RecentProductTimes"] = RecentProductTimes;
-        j["AvgProductTimeSec"] = AvgProductTimeSec;
         j["LastCycleSec"] = LastCycleSec;
+        j["LastCycleProducts"] = LastCycleProducts;
+        j["CycleHoldLast"] = CycleHoldLast;
         j["NgRatePercent"] = NgRatePercent();   // property chỉ-đọc: ghi để xem, khi đọc thì bỏ qua
         return jsonx::Dump(j);
     }
@@ -76,10 +89,15 @@ namespace scs
         Get(j, "AutoState", state);
         r->AutoState = (EAutoState)state;
         Get(j, "UnsafePause", r->UnsafePause);
-        if (auto t = j.find("TrayRowsDone"); t != j.end() && t->is_array())
+        if (auto t = j.find("TrayDoneCells"); t != j.end() && t->is_array())
         {
-            for (size_t i = 0; i < 2 && i < t->size(); ++i)
-                if ((*t)[i].is_number_integer()) r->TrayRowsDone[i] = (*t)[i].get<int>();
+            for (size_t i = 0; i < r->Trays.size() && i < t->size(); ++i)
+            {
+                std::vector<int> cells;
+                for (const auto& v : (*t)[i])
+                    if (v.is_number_integer()) cells.push_back(v.get<int>());
+                r->Trays[i].LoadDone(std::move(cells));
+            }
         }
         Get(j, "LastRowResult", r->LastRowResult);
         Get(j, "LastRowTray", r->LastRowTray);
@@ -88,10 +106,9 @@ namespace scs
         Get(j, "CountNg", r->CountNg);
         Get(j, "CountTotal", r->CountTotal);
         Get(j, "ConsecutiveNg", r->ConsecutiveNg);
-        Get(j, "LastProductTimeSec", r->LastProductTimeSec);
-        Get(j, "RecentProductTimes", r->RecentProductTimes);
-        Get(j, "AvgProductTimeSec", r->AvgProductTimeSec);
         Get(j, "LastCycleSec", r->LastCycleSec);
+        Get(j, "LastCycleProducts", r->LastCycleProducts);
+        Get(j, "CycleHoldLast", r->CycleHoldLast);
         return r;
     }
 }

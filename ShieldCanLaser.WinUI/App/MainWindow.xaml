@@ -152,6 +152,11 @@
                     <TextBlock Text="I/O" FontSize="12" VerticalAlignment="Center"/>
                     <Ellipse x:Name="VisionLamp" Width="10" Height="10" Margin="14,0,6,0" VerticalAlignment="Center"/>
                     <TextBlock Text="Vision" FontSize="12" VerticalAlignment="Center"/>
+                    <StackPanel Orientation="Horizontal"
+                                ToolTipService.ToolTip="Laser: green = ready (X004), orange = marking (X005), gray = not ready or I/O disconnected.">
+                        <Ellipse x:Name="LaserLamp" Width="10" Height="10" Margin="14,0,6,0" VerticalAlignment="Center"/>
+                        <TextBlock Text="Laser" FontSize="12" VerticalAlignment="Center"/>
+                    </StackPanel>
 
                     <!-- Luồng chu kỳ EtherCAT trên core dành riêng: CPU đang dùng + jitter thực đo. Chỉ hiện khi
                          bus SOEM thật đang mở. -->

@@ -161,13 +161,7 @@ namespace scs
         }
 
 #define SCS_VISION_FIELDS(X) \
-    X(FlowLocateCan) X(OutFound) X(OutImage) X(RenderCam) X(GlobalVarModule) X(GvAxisX) X(GvAxisZ) X(GvNozzle) X(GvIsLocate)
-
-#define SCS_VISION_CALIB_FIELDS(X) \
-    X(CenterX) X(CenterZ) X(CenterSet) X(GridStepX) X(GridStepZ) X(CalibNozzle) X(VerifyStepMm) X(ShotsPerPoint) X(ResidualTolMm)
-
-#define SCS_LASER_COMP_FIELDS(X) \
-    X(GainX) X(GainZ) X(MaxCompMm) X(LaserPulseMinMs)
+    X(InspectPath) X(OutImage) X(RenderCam)
 
 #define SCS_DEFINE_JSON(Type, FIELDS) \
         json ToJson(const Type& v) \
@@ -184,33 +178,27 @@ namespace scs
 #define SCS_JSON_GET(f) Get(j, #f, v.f);
 
         SCS_DEFINE_JSON(VisionOutputNames, SCS_VISION_FIELDS)
-        SCS_DEFINE_JSON(VisionCalibSettings, SCS_VISION_CALIB_FIELDS)
-        SCS_DEFINE_JSON(LaserCompSettings, SCS_LASER_COMP_FIELDS)
 
 #undef SCS_JSON_PUT
 #undef SCS_JSON_GET
 #undef SCS_DEFINE_JSON
     }
 
-    std::vector<double> VisionCalibSettings::ParseList(std::string_view text)
+    std::string VisionOutputNames::InspectFlow() const
     {
-        std::vector<double> out;
-        std::string cur;
-        auto flush = [&] {
-            std::string t = base::Trim(cur);
-            cur.clear();
-            if (t.empty()) return;
-            char* end = nullptr;
-            double v = std::strtod(t.c_str(), &end);
-            if (end && *end == '\0' && std::isfinite(v)) out.push_back(v);
-        };
-        for (char c : text)
-        {
-            if (c == ',' || c == ';') flush();
-            else cur.push_back(c);
-        }
-        flush();
-        return out;
+        std::string p = base::Trim(InspectPath);
+        return base::Trim(p.substr(0, p.find('.')));
+    }
+
+    std::string VisionOutputNames::InspectPathProblem() const
+    {
+        std::string p = base::Trim(InspectPath);
+        if (p.empty()) return "inspection path not set (Setting page, e.g. Flow1.GroupInspection)";
+        size_t dot = p.find('.');
+        if (dot == std::string::npos) return "inspection path \"" + p + "\" has no Group — write Flow.Group, e.g. Flow1.GroupInspection";
+        if (base::Trim(p.substr(0, dot)).empty() || base::Trim(p.substr(dot + 1)).empty())
+            return "inspection path \"" + p + "\" must be Flow.Group, e.g. Flow1.GroupInspection";
+        return {};
     }
 
     std::string VisionOutputNames::RenderPath(std::string_view flow, std::string_view path)
@@ -265,7 +253,6 @@ namespace scs
         j["ZSafe"] = ZSafe;
         j["ZSafeInterlock"] = ZSafeInterlock;
         j["HasLightCurtain"] = HasLightCurtain;
-        j["HasAirSensor"] = HasAirSensor;
         j["HasTraySensors"] = HasTraySensors;
         j["ControlTickMs"] = ControlTickMs;
         j["WatchdogTimeoutMs"] = WatchdogTimeoutMs;
@@ -275,9 +262,7 @@ namespace scs
         j["VisionSettleMs"] = VisionSettleMs;
         j["LampSettleMs"] = LampSettleMs;
         j["VisionOutputs"] = ToJson(VisionOutputs);
-        j["VisionCalib"] = ToJson(VisionCalib);
-        j["CalibValidDays"] = CalibValidDays;
-        j["LaserComp"] = ToJson(LaserComp);
+        j["LaserPulseMinMs"] = LaserPulseMinMs;
         json axes = json::array();
         for (auto& a : Axes)
             if (a) axes.push_back(ToJson(*a));
@@ -308,7 +293,6 @@ namespace scs
         Get(j, "ZSafe", s->ZSafe);
         Get(j, "ZSafeInterlock", s->ZSafeInterlock);
         Get(j, "HasLightCurtain", s->HasLightCurtain);
-        Get(j, "HasAirSensor", s->HasAirSensor);
         Get(j, "HasTraySensors", s->HasTraySensors);
         Get(j, "ControlTickMs", s->ControlTickMs);
         Get(j, "WatchdogTimeoutMs", s->WatchdogTimeoutMs);
@@ -318,9 +302,7 @@ namespace scs
         Get(j, "VisionSettleMs", s->VisionSettleMs);
         Get(j, "LampSettleMs", s->LampSettleMs);
         if (auto it = j.find("VisionOutputs"); it != j.end() && it->is_object()) FromJson(*it, s->VisionOutputs);
-        if (auto it = j.find("VisionCalib"); it != j.end() && it->is_object()) FromJson(*it, s->VisionCalib);
-        Get(j, "CalibValidDays", s->CalibValidDays);
-        if (auto it = j.find("LaserComp"); it != j.end() && it->is_object()) FromJson(*it, s->LaserComp);
+        Get(j, "LaserPulseMinMs", s->LaserPulseMinMs);
         if (auto it = j.find("Axes"); it != j.end() && it->is_array())
         {
             for (const auto& e : *it)

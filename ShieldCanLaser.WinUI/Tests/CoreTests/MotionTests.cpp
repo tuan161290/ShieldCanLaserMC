@@ -180,7 +180,7 @@ namespace
         int calls = 0, lastBit = -1;
         io.AfterSetDo = [&](int bit, bool) { ++calls; lastBit = bit; };
         CHECK(!io.IsConnected() && io.Connect() && io.IsConnected());
-        CHECK(io.GetDi(IoMap::EmgOk) && io.GetDi(IoMap::LightCurtainOk) && io.GetDi(IoMap::AirOk) && !io.GetDi(IoMap::BtnStart));
+        CHECK(io.GetDi(IoMap::EmgOk) && io.GetDi(IoMap::LightCurtainOk) && !io.GetDi(IoMap::BtnStart));
         CHECK(io.GetDi(IoMap::TrayPresent(1)) && io.GetDi(IoMap::TrayPresent(2)) && !io.GetDi(IoMap::VacuumSensor(1)));
         CHECK(!io.GetDi(-1) && !io.GetDi(32) && !io.GetDo(-1) && !io.GetDo(32));
         io.SetDo(IoMap::DoBuzzer, true); io.SetDo(IoMap::DoBuzzer, true); io.SetDo(99, true);
@@ -203,9 +203,13 @@ namespace
 
         // Đếm xung laser: chỉ sườn lên.
         CHECK(io.LaserPulseCount() == 0);
-        io.SetDo(IoMap::DoLaserTrigger, true); io.SetDo(IoMap::DoLaserTrigger, true); io.SetDo(IoMap::DoLaserTrigger, false);
-        io.SetDo(IoMap::DoLaserTrigger, true); io.SetDo(IoMap::DoLaserTrigger, false);
-        CHECK(io.LaserPulseCount() == 2 && !io.GetDo(IoMap::DoLaserTrigger));
+        CHECK(io.GetDi(IoMap::DiLaserReady) && !io.GetDi(IoMap::DiLaserBusy));   // đèn Laser ở thanh trạng thái đọc 2 bit này
+        io.SetDo(IoMap::LaserStart, true); io.SetDo(IoMap::LaserStart, true);
+        CHECK(io.GetDi(IoMap::DiLaserBusy));
+        io.SetDo(IoMap::LaserStart, false);
+        CHECK(!io.GetDi(IoMap::DiLaserBusy) && io.GetDi(IoMap::DiLaserReady));
+        io.SetDo(IoMap::LaserStart, true); io.SetDo(IoMap::LaserStart, false);
+        CHECK(io.LaserPulseCount() == 2 && !io.GetDo(IoMap::LaserStart));
 
         // DI giữ mức: sườn chỉ tồn tại tới vòng quét kế tiếp.
         io.SimSet(20, true);
@@ -334,10 +338,13 @@ namespace
         CHECK(!x->MoveAbs(20, 200, never.get_token()) && AlarmManager::IsActive(Code("X", AxisFault::NotHomed)));
         CHECK(motion.Home(x, never.get_token()) && x->OrgOk() && !x->Busy() && !motion.IsHoming("X") && x->ServoOn());
         CHECK(x->MoveAbs(20, 200, never.get_token()) && !x->Busy());   // lệnh ĐẦU TIÊN sau về gốc phải chạy (bit4 đã hạ)
+        x->Refresh();
         CHECK_NEAR(x->CurrentPos(), 20.0, 0.011);
         CHECK(x->MoveInc(5, 200, never.get_token()));
+        x->Refresh();
         CHECK_NEAR(x->CurrentPos(), 25.0, 0.011);
         CHECK(x->MoveAbs(24, 5, never.get_token(), true));
+        x->Refresh();
         CHECK_NEAR(x->CurrentPos(), 24.0, 0.011);
         CHECK(!x->MoveAbs(700, 200, never.get_token()) && AlarmManager::IsActive(Code("X", AxisFault::SoftLimit)));
         CHECK(x->DiagnosticText().find("OpEn") != std::string::npos);
@@ -360,6 +367,7 @@ namespace
         x->Refresh();
         CHECK(!x->Busy() && x->CurrentPos() < p1);
         CHECK(x->MoveAbs(10, 300, never.get_token()));                  // sau Halt vẫn nhận lệnh mới
+        x->Refresh();
         CHECK_NEAR(x->CurrentPos(), 10.0, 0.011);
 
         // Huỷ giữa chừng: trả false, trục dừng.
@@ -385,9 +393,11 @@ namespace
         // Trục Y, Z trên đường EtherCAT: về gốc và chạy tới đích.
         auto y = motion.Axis("Y");
         CHECK(y->SetServoOn(true) && motion.Home(y, never.get_token()) && y->MoveAbs(30, 200, never.get_token()));
+        y->Refresh();
         CHECK_NEAR(y->CurrentPos(), 30.0, 0.011);
         auto z = motion.Axis("Z");
         CHECK(z->SetServoOn(true) && motion.Home(z, never.get_token()) && z->MoveAbs(8, 100, never.get_token()));
+        z->Refresh();
         CHECK_NEAR(z->CurrentPos(), 8.0, 0.011);
 
         CHECK(x->SetServoOn(false));
@@ -409,8 +419,8 @@ namespace
         CHECK(!io->GetDo(IoMap::DoBuzzer));
         io->SetDo(IoMap::DoBuzzer, true);
         io->SetDo(IoMap::DoCount, true);                                // ngoài IoMap: bỏ qua
-        CHECK(io->GetDo(IoMap::DoBuzzer) && !io->GetDo(IoMap::DoCount) && !io->GetDo(IoMap::DoLampRed));
-        CHECK(sim->GetSimulatedOutputs(sys->IoModule->SlavePosition) == (1ULL << IoMap::DoBuzzer));   // Y013 ở module DO
+        CHECK(io->GetDo(IoMap::DoBuzzer) && !io->GetDo(IoMap::DoCount) && !io->GetDo(IoMap::DoTowerLampRed));
+        CHECK(sim->GetSimulatedOutputs(sys->IoModule->SlavePosition) == (1ULL << IoMap::DoBuzzer));   // Y015 ở module DO
         io->SetDo(IoMap::DoBuzzer, false);
         CHECK(!io->GetDo(IoMap::DoBuzzer));
         sim->SetSimulateInputs(sys->IoModule->SlavePosition, nc | (1ULL << IoMap::BtnStart));

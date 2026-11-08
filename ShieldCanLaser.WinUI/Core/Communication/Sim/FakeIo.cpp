@@ -7,15 +7,15 @@ namespace scs
         using Lock = std::lock_guard<std::recursive_mutex>;
 
         /// <summary>Các DI là nút nhấn-nhả — mô phỏng tự nhả sau một vòng quét.</summary>
-        constexpr int MomentaryButtons[] = { IoMap::BtnStart, IoMap::BtnStop, IoMap::BtnReset };
+        constexpr int MomentaryButtons[] = { IoMap::BtnStart, IoMap::BtnStop, IoMap::BtnStart2 };
     }
 
     FakeIo::FakeIo()
     {
-        // Tín hiệu an toàn đấu NC: 1 = bình thường. Hai tray có mặt.
+        // Tín hiệu an toàn đấu NC: 1 = bình thường. Hai tray có mặt, laser sẵn sàng.
+        m_di[IoMap::DiLaserReady] = true;
         m_di[IoMap::EmgOk] = true;
         m_di[IoMap::LightCurtainOk] = true;
-        m_di[IoMap::AirOk] = true;
         for (int t = 1; t <= IoMap::TrayCount; ++t) m_di[IoMap::TrayPresent(t)] = true;
     }
 
@@ -31,6 +31,12 @@ namespace scs
         return bit >= 0 && bit < IoMap::DoCount && m_do[bit];
     }
 
+    int FakeIo::DoRiseCount(int bit) const
+    {
+        Lock l(m_lock);
+        return bit >= 0 && bit < IoMap::DoCount ? m_doRises[bit] : 0;
+    }
+
     void FakeIo::SetDo(int bit, bool value)
     {
         if (bit < 0 || bit >= IoMap::DoCount) return;
@@ -41,7 +47,8 @@ namespace scs
             // Cảm biến chân không của nozzle bám theo van hút của nó (trừ nozzle đặt hút trượt).
             for (int k = 1; k <= IoMap::NozzleCount; ++k)
                 if (bit == IoMap::DoVacuum(k)) m_di[IoMap::VacuumSensor(k)] = value && !m_pickFail[k];
-            if (bit == IoMap::DoLaserTrigger && value) ++m_laserPulses;
+            if (bit == IoMap::LaserStart) m_di[IoMap::DiLaserBusy] = value;
+            if (value) ++m_doRises[bit];
         }
         if (AfterSetDo) AfterSetDo(bit, value);
     }

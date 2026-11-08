@@ -417,7 +417,7 @@ namespace ui
             std::string what = "SVO " + m_name;
             if (axis->ServoOn())
             {
-                RunBlocking([axis, what] { RunGuarded(what, [&] { axis->SetServoOn(false); }); });
+                RunBlocking([axis, what] { RunGuarded(what, [&] { scs::McControl::ServoOff(axis); }); });
                 return;
             }
             if (axis->Alarm())

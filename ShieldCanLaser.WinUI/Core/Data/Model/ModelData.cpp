@@ -201,21 +201,9 @@ namespace scs
         a["MarkTimeMs"] = Auto.MarkTimeMs;
         j["Auto"] = std::move(a);
 
-        json c = json::object();
-        if (Calib.GridVerifiedAt) c["GridVerifiedAt"] = ToIsoString(*Calib.GridVerifiedAt);
         json nozzles = json::array();
-        for (const auto& n : Calib.Nozzles)
-        {
-            json e = json::object();
-            e["RefX"] = n.RefX;
-            e["RefZ"] = n.RefZ;
-            if (n.RefAt) e["RefAt"] = ToIsoString(*n.RefAt);
-            e["TrimX"] = n.TrimX;
-            e["TrimZ"] = n.TrimZ;
-            nozzles.push_back(std::move(e));
-        }
-        c["Nozzles"] = std::move(nozzles);
-        j["Calib"] = std::move(c);
+        for (const auto& n : Trim.Nozzles) nozzles.push_back(json{ { "X", n.X }, { "Z", n.Z } });
+        j["Trim"] = json{ { "Nozzles", std::move(nozzles) } };
         return jsonx::Dump(j);
     }
 
@@ -255,30 +243,23 @@ namespace scs
             jsonx::Get(*a, "UseLaser", m->Auto.UseLaser);
             jsonx::Get(*a, "MarkTimeMs", m->Auto.MarkTimeMs);
         }
-        if (auto c = j.find("Calib"); c != j.end() && c->is_object())
+        // Model cũ (trước 2026-11-08) cất trim trong khoá "Calib" cùng hằng số hiệu chuẩn vision đã bỏ: chỉ lấy lại trim.
+        auto readTrims = [&m](const json& owner, const char* keyX, const char* keyZ)
         {
-            auto time = [](const json& o, const char* key, std::optional<TimePoint>& out)
+            auto nozzles = owner.find("Nozzles");
+            if (nozzles == owner.end() || !nozzles->is_array()) return;
+            size_t i = 0;
+            for (const auto& e : *nozzles)
             {
-                TimePoint t;
-                if (auto it = o.find(key); it != o.end() && it->is_string() && TryParseDateTime(it->get<std::string>(), t)) out = t;
-            };
-            time(*c, "GridVerifiedAt", m->Calib.GridVerifiedAt);
-            if (auto nozzles = c->find("Nozzles"); nozzles != c->end() && nozzles->is_array())
-            {
-                size_t i = 0;
-                for (const auto& e : *nozzles)
-                {
-                    if (i >= m->Calib.Nozzles.size()) break;
-                    auto& n = m->Calib.Nozzles[i++];
-                    if (!e.is_object()) continue;
-                    jsonx::Get(e, "RefX", n.RefX);
-                    jsonx::Get(e, "RefZ", n.RefZ);
-                    time(e, "RefAt", n.RefAt);
-                    jsonx::Get(e, "TrimX", n.TrimX);
-                    jsonx::Get(e, "TrimZ", n.TrimZ);
-                }
+                if (i >= m->Trim.Nozzles.size()) break;
+                auto& n = m->Trim.Nozzles[i++];
+                if (!e.is_object()) continue;
+                jsonx::Get(e, keyX, n.X);
+                jsonx::Get(e, keyZ, n.Z);
             }
-        }
+        };
+        if (auto t = j.find("Trim"); t != j.end() && t->is_object()) readTrims(*t, "X", "Z");
+        else if (auto c = j.find("Calib"); c != j.end() && c->is_object()) readTrims(*c, "TrimX", "TrimZ");
         return m;
     }
 }

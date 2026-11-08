@@ -261,51 +261,15 @@
       "causeEn": "Found but match score below threshold — product dirty or scratched, or model not suitable.",
       "remedyEn": "Check product quality and the match model. Review the score threshold."
     },
-    "4006": {
-      "level": "Error",
-      "vi": "Camera chưa được hiệu chuẩn",
-      "en": "Camera not calibrated",
-      "cause": "Chưa có dữ liệu hiệu chuẩn pixel→mm cho camera này.",
-      "remedy": "Chạy wizard hiệu chuẩn ở trang Teaching trước khi chạy Auto.",
-      "causeEn": "No pixel→mm calibration data for this camera.",
-      "remedyEn": "Run the calibration wizard on the Teaching page before running Auto."
-    },
-    "4010": {
-      "level": "Error",
-      "vi": "Flow trả dữ liệu không khớp hợp đồng",
-      "en": "Vision flow contract mismatch",
-      "cause": "Echo RunId hoặc biến trục sai, thiếu output, số không hữu hạn, biến toàn cục chưa khai, Script không chạy tới lệnh cuối, hoặc lệnh ngoài soft limit.",
-      "remedy": "Can vẫn trên nozzle. Đọc chi tiết alarm, sửa Flow hoặc biến theo cẩm nang, bấm RESET rồi chạy lại — chu trình bắt đầu lại từ S00.",
-      "causeEn": "Wrong RunId echo or axis variable, missing output, non-finite number, undeclared global variable, Script did not reach the last command, or command outside soft limit.",
-      "remedyEn": "The can is still on the nozzle. Read the alarm detail, fix the Flow or variables per the manual, press RESET and run again — the cycle restarts from S00."
-    },
-    "4011": {
-      "level": "Error",
-      "vi": "Hiệu chuẩn chưa sẵn sàng",
-      "en": "Calibration not ready",
-      "cause": "Cổng hiệu chuẩn của App chặn: chưa kiểm tra lưới X × Z, nozzle chưa SET MASTER, hoặc ngưỡng bù (Gain/MaxCompMm) ở Setting sai.",
-      "remedy": "Chạy lại bước hiệu chuẩn mà chi tiết alarm nêu ở trang Vision Edit, bấm RESET rồi chạy lại.",
-      "causeEn": "App calibration gate blocked: X × Z grid check missing, nozzle master not set, or wrong compensation limits (Gain/MaxCompMm) in Setting.",
-      "remedyEn": "Redo the calibration step named in the alarm detail on the Vision Edit page, press RESET, then run again."
-    },
-    "4090": {
-      "level": "Warning",
-      "vi": "Hiệu chuẩn camera đã quá hạn",
-      "en": "Camera calibration expired",
-      "cause": "Lần hiệu chuẩn gần nhất đã quá số ngày cho phép.",
-      "remedy": "Chạy lại lưới 9 điểm X × Z và SET MASTER ở trang Vision Edit.",
-      "causeEn": "Last calibration is older than the allowed number of days.",
-      "remedyEn": "Redo the 9-point X × Z grid and SET MASTER on the Vision Edit page."
-    },
 
     "5001": {
       "level": "Warning",
       "vi": "Hút hụt sản phẩm",
       "en": "Pick failed",
       "cause": "Nozzle không có tín hiệu chân không sau khi hạ, hút và nâng cả hàng — ô trống, can lệch, hoặc nozzle bẩn/tắc. Chi tiết alarm nêu số nozzle hụt.",
-      "remedy": "Máy đánh dấu ô đó NG, không soi/khắc nozzle đó, vẫn chạy tiếp các nozzle còn lại. Nếu lặp nhiều: vệ sinh nozzle, kiểm tra cao độ Z của điểm Pick (Teaching).",
+      "remedy": "Máy đánh dấu ô đó NG, không khắc/kiểm tra nozzle đó, vẫn chạy tiếp các nozzle còn lại. Nếu lặp nhiều: vệ sinh nozzle, kiểm tra cao độ Z của điểm Pick (Teaching).",
       "causeEn": "No vacuum signal on a nozzle after lowering, sucking and lifting the row — empty cell, can offset, or nozzle dirty/clogged. The alarm detail names the nozzle.",
-      "remedyEn": "The machine marks that cell NG, skips vision/laser for that nozzle and continues with the others. If frequent: clean the nozzle, check the Z height of the Pick point (Teaching)."
+      "remedyEn": "The machine marks that cell NG, skips laser/inspection for that nozzle and continues with the others. If frequent: clean the nozzle, check the Z height of the Pick point (Teaching)."
     },
     "5002": {
       "level": "Error",
@@ -325,15 +289,6 @@
       "causeEn": "After the valve is switched off, the sensor still reports a can on the nozzle — static cling or valve not releasing.",
       "remedyEn": "Check the vacuum valve and anti-static; remove the can from the nozzle, then press RESET."
     },
-    "5004": {
-      "level": "Warning",
-      "vi": "Lượng bù vượt ngưỡng cho phép",
-      "en": "Compensation out of range",
-      "cause": "Độ lệch X/Z của can trên nozzle so với master (Rel − Ref) vượt MaxCompMm ở trang Setting — nhiều khả năng vision đo nhầm vật, master đặt sai, hoặc can lệch thật.",
-      "remedy": "Máy KHÔNG khắc can đó, đánh dấu ô NG và trả can về tray. Kiểm tra Flow LocateCan, vùng tìm kiếm và SET MASTER của nozzle nêu trong chi tiết alarm.",
-      "causeEn": "X/Z deviation of the can on the nozzle vs. master (Rel − Ref) exceeds MaxCompMm on the Setting page — vision most likely measured the wrong object, master set wrongly, or the can is really offset.",
-      "remedyEn": "The machine does NOT mark that can, marks the cell NG and returns it to the tray. Check the LocateCan Flow, search area and SET MASTER of the nozzle named in the alarm detail."
-    },
     "5005": {
       "level": "Warning",
       "vi": "Điểm teach thiếu toạ độ — dừng chu trình",
@@ -345,12 +300,12 @@
     },
     "5006": {
       "level": "Warning",
-      "vi": "Vision không thấy can trên nozzle — ô NG",
-      "en": "Vision: can not found on nozzle — cell NG",
-      "cause": "Flow LocateCan không tìm thấy can (Found = 0), echo sai, hoặc Flow báo lỗi/quá giờ ở nozzle nêu trong chi tiết alarm.",
-      "remedy": "Máy không khắc can đó, đánh dấu ô NG và trả về tray. Nếu lặp: kiểm tra đèn CAM, Flow LocateCan, vùng tìm kiếm và điểm CAM N1/N7 (Teaching).",
-      "causeEn": "LocateCan Flow did not find the can (Found = 0), echo mismatch, or the Flow failed/timed out for the nozzle named in the alarm detail.",
-      "remedyEn": "The machine does not mark that can, marks the cell NG and returns it to the tray. If it repeats: check the CAM light, the LocateCan Flow, search area and the CAM N1/N7 points (Teaching)."
+      "vi": "Vision không kiểm tra được can — ô NG",
+      "en": "Vision: inspection could not run — cell NG",
+      "cause": "Flow kiểm tra báo lỗi/quá giờ, không có Group theo đường dẫn Flow.Group ở trang Setting, hoặc Group không trả output Result ở nozzle nêu trong chi tiết alarm. Can đã khắc.",
+      "remedy": "Máy đánh dấu ô NG và trả can về tray. Kiểm tra đèn CAM, đường dẫn Flow.Group (Setting → CHECK PATH), output Result của Group và điểm CAM N1/N7 (Teaching).",
+      "causeEn": "The inspection Flow failed/timed out, the Group at the Flow.Group path on the Setting page does not exist, or the Group returned no Result output for the nozzle named in the alarm detail. The can is already marked.",
+      "remedyEn": "The machine marks the cell NG and returns the can to the tray. Check the CAM light, the Flow.Group path (Setting → CHECK PATH), the Group's Result output and the CAM N1/N7 points (Teaching)."
     },
     "5010": {
       "level": "Error",
@@ -366,9 +321,9 @@
       "vi": "Hết tray — chờ thay tray",
       "en": "Trays finished, waiting for change",
       "cause": "Cả hai tray đã khắc hết các hàng (hoặc không có tray) — X/Y đã về vị trí chờ.",
-      "remedy": "Thay tray (cảm biến X005/X006 phải thấy tray) rồi bấm START: máy đặt lại tiến độ và chạy từ hàng 1 của tray 1.",
+      "remedy": "Thay tray (cảm biến X008/X009 phải thấy tray) rồi bấm START: máy đặt lại tiến độ và chạy từ hàng 1 của tray 1.",
       "causeEn": "Both trays have all rows marked (or no tray present) — X/Y moved to standby.",
-      "remedyEn": "Replace the trays (sensors X005/X006 must detect them), then press START: progress resets and the cycle runs from row 1 of tray 1."
+      "remedyEn": "Replace the trays (sensors X008/X009 must detect them), then press START: progress resets and the cycle runs from row 1 of tray 1."
     },
     "5030": {
       "level": "Error",

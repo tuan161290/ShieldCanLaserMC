@@ -1,18 +1,19 @@
-<?xml version="1.0" encoding="utf-8"?>
+﻿<?xml version="1.0" encoding="utf-8"?>
 <UserControl
     x:Class="ShieldCanLaser.MainPage"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:local="using:ShieldCanLaser">
 
-    <!-- Trang Main: vận hành + sản lượng (trái), 2 tray + 7 nozzle + khung ảnh CAM (giữa), nhật ký (phải).
+    <!-- Trang Main: vận hành + sản lượng (trái), 2 tray + 7 nozzle + khung ảnh CAM (giữa), nhật ký (phải, mặc định ẩn).
          Không binding: MainPage.xaml.cpp đọc trạng thái từ Core trong OnTick() và đặt thuộc tính control khi giá trị đổi.
          Cột trái/phải hẹp, ưu tiên cột giữa (ảnh CAM) — màn thực tế 1280×1024 (4:3). -->
     <Grid x:Name="Root" Loaded="OnRootLoaded">
         <Grid.ColumnDefinitions>
             <ColumnDefinition Width="256"/>
             <ColumnDefinition Width="*"/>
-            <ColumnDefinition Width="290"/>
+            <ColumnDefinition Width="Auto"/>
+            <ColumnDefinition Width="Auto"/>
         </Grid.ColumnDefinitions>
 
         <!-- ═══ Cột trái: vận hành + sản lượng ═══ — cuộn được phòng khi hiện thêm thông báo. Thanh cuộn WinUI nổi đè lên
@@ -33,18 +34,27 @@
                             <TextBlock Text="MODE" Style="{StaticResource SectionHeaderStyle}"/>
                         </Border>
                         <Border Grid.Row="1" Style="{StaticResource DividerStyle}"/>
-                        <!-- Không có công tắc chìa AUTO/MANUAL vật lý — chọn chế độ bằng 2 nút này (McControl::RequestSetMode).
-                             Nút đang chọn tô theo màu đèn tháp tương ứng (AUTO xanh lá, MANUAL cam). -->
-                        <Grid Grid.Row="2" Margin="12" ColumnSpacing="8">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="*"/>
-                                <ColumnDefinition Width="*"/>
-                            </Grid.ColumnDefinitions>
-                            <Button x:Name="AutoButton" Grid.Column="0" Content="AUTO" Height="44"
-                                    HorizontalAlignment="Stretch" FontSize="15" FontWeight="Bold" Click="OnAutoClick"/>
-                            <Button x:Name="ManualButton" Grid.Column="1" Content="MANUAL" Height="44"
-                                    HorizontalAlignment="Stretch" FontSize="15" FontWeight="Bold" Click="OnManualClick"/>
-                        </Grid>
+                        <!-- Không có công tắc chìa AUTO/MANUAL vật lý — chọn chế độ bằng công tắc này (McControl::RequestSetMode), như
+                             ShieldCanAssy.WinUI: chạm vào đâu trên thanh cũng đổi. Bên đang chọn có khối màu đèn tháp tương ứng
+                             (AUTO xanh lá, MANUAL cam). -->
+                        <Border x:Name="ModeSwitch" Grid.Row="2" Margin="12" Height="40" Padding="3"
+                                Background="#0F000000" BorderBrush="#29000000" BorderThickness="1" CornerRadius="20"
+                                Tapped="OnModeSwitchTapped" PointerEntered="OnModeSwitchPointerEntered"
+                                PointerExited="OnModeSwitchPointerExited" PointerPressed="OnModeSwitchPointerPressed"
+                                PointerReleased="OnModeSwitchPointerReleased">
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="*"/>
+                                </Grid.ColumnDefinitions>
+                                <Border x:Name="ModeThumbAuto" CornerRadius="16" Background="{StaticResource GreenOnBrush}" Visibility="Collapsed"/>
+                                <Border x:Name="ModeThumbManual" Grid.Column="1" CornerRadius="16" Background="{StaticResource CautionOnBrush}"/>
+                                <TextBlock x:Name="ModeTextAuto" Text="AUTO" FontSize="14" FontWeight="Bold" HorizontalAlignment="Center"
+                                           VerticalAlignment="Center" Foreground="{StaticResource StatusOffBrush}"/>
+                                <TextBlock x:Name="ModeTextManual" Grid.Column="1" Text="MANUAL" FontSize="14" FontWeight="Bold" HorizontalAlignment="Center"
+                                           VerticalAlignment="Center" Foreground="{StaticResource TextOnAccentBrush}"/>
+                            </Grid>
+                        </Border>
                     </Grid>
                 </Border>
 
@@ -186,67 +196,63 @@
                                                Foreground="{StaticResource TextPrimaryBrush}"/>
                                 </StackPanel>
                             </Grid>
-                            <!-- Bảng thời gian (Tuấn chốt 2026-10-12). Một chu kỳ = một hàng tray (7 can). "—" = chu kỳ đang
-                                 chạy chưa có số.
-                                 Pre-Tack Time: s/can trung bình của chu kỳ trước (thời gian lượt ÷ số can).
-                                 Tack Time:     s/can trung bình của chu kỳ đang chạy (giây đã chạy ÷ số can đã khắc xong).
-                                 Cycle Time:    thời gian cả chu kỳ — trái: chu kỳ đang chạy, phải: chu kỳ trước.
-                                 Không tính lúc dừng. -->
-                            <Border Style="{StaticResource CardDividerStyle}"/>
-                            <Border BorderBrush="{StaticResource DividerBrush}" BorderThickness="1,1,0,0">
+                            <!-- Bảng Cycle Time / Tack Time — bố cục và cách tính như ShieldCanAssy.WinUI. Một chu kỳ = một tray, hoặc một
+                                 lượt chạy lẻ. "—" = chưa có số.
+                                 Cycle Time:      đồng hồ thực của chu kỳ đang chạy, tính cả lúc chờ và STOP; xong thì giữ số cuối tới khi
+                                                  chu kỳ mới bắt đầu.
+                                 Last Cycle Time: chu kỳ xong gần nhất.
+                                 Tack Time:       Cycle Time ÷ số can OK, giữ số cuối như Cycle Time.
+                                 Last Tack Time:  Last Cycle Time ÷ số can OK. -->
+                            <Border Margin="0,8,0,0" BorderThickness="1" BorderBrush="{StaticResource DividerBrush}">
                                 <Grid>
-                                    <Grid.Resources>
-                                        <Style x:Key="TimeCell" TargetType="Border">
-                                            <Setter Property="BorderBrush" Value="{StaticResource DividerBrush}"/>
-                                            <Setter Property="BorderThickness" Value="0,0,1,1"/>
-                                            <Setter Property="Padding" Value="8,6"/>
-                                        </Style>
-                                        <Style x:Key="TimeLabelCell" TargetType="Border" BasedOn="{StaticResource TimeCell}">
-                                            <Setter Property="Background" Value="#08000000"/>
-                                        </Style>
-                                    </Grid.Resources>
                                     <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="Auto" MinWidth="120"/>
+                                        <ColumnDefinition Width="Auto"/>
                                         <ColumnDefinition Width="*"/>
                                     </Grid.ColumnDefinitions>
                                     <Grid.RowDefinitions>
                                         <RowDefinition Height="Auto"/>
                                         <RowDefinition Height="Auto"/>
                                         <RowDefinition Height="Auto"/>
+                                        <RowDefinition Height="Auto"/>
                                     </Grid.RowDefinitions>
 
-                                    <Border Grid.Row="0" Style="{StaticResource TimeLabelCell}"
-                                            ToolTipService.ToolTip="Average time per pc in the previous cycle: cycle time divided by pcs in that cycle.">
-                                        <TextBlock Text="Pre-Tack Time" Style="{StaticResource CaptionStyle}" VerticalAlignment="Center"/>
+                                    <Border Grid.Row="0" Padding="6,3" BorderBrush="{StaticResource DividerBrush}" BorderThickness="0,0,1,1"
+                                            ToolTipService.ToolTip="Tray in progress. Wall-clock incl. waits/STOP. Kept when the tray is done, resets when a new tray starts. A run of selected cells counts as one cycle.">
+                                        <TextBlock Text="Cycle Time" FontSize="11" Foreground="{StaticResource StatusOffBrush}" VerticalAlignment="Center"/>
                                     </Border>
-                                    <Border Grid.Row="0" Grid.Column="1" Style="{StaticResource TimeCell}">
-                                        <TextBlock x:Name="PreTackText" Text="—" FontSize="16" FontWeight="SemiBold"/>
-                                    </Border>
-
-                                    <Border Grid.Row="1" Style="{StaticResource TimeLabelCell}"
-                                            ToolTipService.ToolTip="Average time per pc in the current cycle: elapsed seconds divided by pcs assembled. Shows — until the first pc is done.">
-                                        <TextBlock Text="Tack Time" Style="{StaticResource CaptionStyle}" VerticalAlignment="Center"/>
-                                    </Border>
-                                    <Border Grid.Row="1" Grid.Column="1" Style="{StaticResource TimeCell}">
-                                        <TextBlock x:Name="TackText" Text="—" FontSize="16" FontWeight="SemiBold"/>
+                                    <Border Grid.Row="0" Grid.Column="1" Padding="6,3" BorderBrush="{StaticResource DividerBrush}" BorderThickness="0,0,0,1">
+                                        <TextBlock x:Name="CycleText" Text="—" FontSize="14.5" FontWeight="SemiBold" VerticalAlignment="Center"/>
                                     </Border>
 
-                                    <Border Grid.Row="2" Style="{StaticResource TimeLabelCell}"
-                                            ToolTipService.ToolTip="Full cycle time: left = current cycle, right = previous cycle. Stopped time excluded.">
-                                        <TextBlock Text="Cycle Time" Style="{StaticResource CaptionStyle}" VerticalAlignment="Center"/>
+                                    <Border Grid.Row="1" Padding="6,3" BorderBrush="{StaticResource DividerBrush}" BorderThickness="0,0,1,1"
+                                            ToolTipService.ToolTip="Last finished tray, wall-clock.">
+                                        <TextBlock Text="Last Cycle Time" FontSize="11" Foreground="{StaticResource StatusOffBrush}" VerticalAlignment="Center"/>
                                     </Border>
-                                    <Border Grid.Row="2" Grid.Column="1" Style="{StaticResource TimeCell}">
-                                        <StackPanel Orientation="Horizontal" Spacing="12">
-                                            <TextBlock x:Name="CycleNowText" Text="—" FontSize="16" FontWeight="SemiBold"/>
-                                            <TextBlock x:Name="CyclePrevText" Text="—" FontSize="16" VerticalAlignment="Center"/>
-                                        </StackPanel>
+                                    <Border Grid.Row="1" Grid.Column="1" Padding="6,3" BorderBrush="{StaticResource DividerBrush}" BorderThickness="0,0,0,1">
+                                        <TextBlock x:Name="LastCycleText" Text="—" FontSize="14.5" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                                    </Border>
+
+                                    <Border Grid.Row="2" Padding="6,3" BorderBrush="{StaticResource DividerBrush}" BorderThickness="0,0,1,1"
+                                            ToolTipService.ToolTip="Cycle Time ÷ OK pcs. Kept when the tray is done until a new tray starts.">
+                                        <TextBlock Text="Tack Time" FontSize="11" Foreground="{StaticResource StatusOffBrush}" VerticalAlignment="Center"/>
+                                    </Border>
+                                    <Border Grid.Row="2" Grid.Column="1" Padding="6,3" BorderBrush="{StaticResource DividerBrush}" BorderThickness="0,0,0,1">
+                                        <TextBlock x:Name="TackText" Text="—" FontSize="14.5" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                                    </Border>
+
+                                    <Border Grid.Row="3" Padding="6,3" BorderBrush="{StaticResource DividerBrush}" BorderThickness="0,0,1,0"
+                                            ToolTipService.ToolTip="Last Cycle Time ÷ OK pcs.">
+                                        <TextBlock Text="Last Tack Time" FontSize="11" Foreground="{StaticResource StatusOffBrush}" VerticalAlignment="Center"/>
+                                    </Border>
+                                    <Border Grid.Row="3" Grid.Column="1" Padding="6,3">
+                                        <TextBlock x:Name="LastTackText" Text="—" FontSize="14.5" FontWeight="SemiBold" VerticalAlignment="Center"/>
                                     </Border>
                                 </Grid>
                             </Border>
-                            <Border Style="{StaticResource CardDividerStyle}"/>
-                            <TextBlock x:Name="UphText" Text="Est. throughput: 0 pcs/h" FontSize="12"
-                                       ToolTipService.ToolTip="Based on the average time per pc of the last 25 pcs, not the actual count — for quick reference only."/>
-                            <TextBlock x:Name="AutoStepText" Style="{StaticResource CaptionStyle}" Margin="0,2,0,0"/>
+
+                            <TextBlock x:Name="UphText" Margin="0,6,0,0" FontSize="12"
+                                       ToolTipService.ToolTip="From Last Tack Time (Tack Time if none). Estimate only."/>
+                            <TextBlock x:Name="AutoStepText" FontSize="12" Foreground="{StaticResource StatusOffBrush}"/>
                         </StackPanel>
                     </Grid>
                 </Border>
@@ -270,14 +276,14 @@
                                 <TextBlock Text="Process" Style="{StaticResource SectionHeaderStyle}"/>
                                 <Button Grid.Column="1" Content="RESET TRAY" Height="28" MinHeight="28" Padding="8,0"
                                         FontSize="13" VerticalAlignment="Center" Click="OnResetTrayClick"
-                                        ToolTipService.ToolTip="Reset tray progress — next cycle starts from row 1 of tray 1. While the cycle waits for a tray change this equals pressing START."/>
+                                        ToolTipService.ToolTip="Reset tray progress and clear selected cells — next cycle starts from row 1 of tray 1. While the cycle waits for a tray change this equals pressing START."/>
                             </Grid>
                         </Border>
                         <Border Grid.Row="1" Style="{StaticResource DividerStyle}"/>
                         <StackPanel Grid.Row="2" Margin="12">
                             <TextBlock x:Name="ProgressText" TextWrapping="Wrap" FontSize="13" Margin="0,0,0,6"/>
                             <TextBlock Style="{StaticResource HintStyle}" Margin="0,0,0,6"
-                                       Text="Load trays → START. Each row: pick 7 cans → CAM each nozzle → laser mark (X/Z compensated) → return to tray. Trays done → replace trays → START."/>
+                                       Text="Load trays → START. Each row: pick 7 cans → CAM each nozzle → laser mark (X/Z compensated) → return to tray. Trays done → replace trays → START. To run single cells: in AUTO tap or drag them on the tray map, then START."/>
                             <TextBlock x:Name="BusText" TextWrapping="Wrap" FontSize="11"
                                        Foreground="{StaticResource TextTertiaryBrush}"/>
                         </StackPanel>
@@ -286,60 +292,71 @@
             </StackPanel>
         </ScrollViewer>
 
-        <!-- ═══ Cột giữa: 2 tray (trái) + 7 nozzle (phải), dưới là khung ảnh CAM ═══ -->
-        <Grid Grid.Column="1" Margin="0,0,8,0">
-            <Grid.RowDefinitions>
-                <RowDefinition Height="*" MinHeight="300"/>
-                <RowDefinition Height="*"/>
-            </Grid.RowDefinitions>
+        <!-- ═══ Cột giữa: 2 tray (trái, trọn chiều cao) + 7 nozzle và khung ảnh CAM (phải, xếp chồng) ═══ -->
+        <Grid Grid.Column="1" Margin="0,0,8,0" ColumnSpacing="8">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="4*"/>
+                <ColumnDefinition Width="5*"/>
+            </Grid.ColumnDefinitions>
 
-            <!-- Trái: 2 tray TrayRows × 7 ô xếp chồng dọc như trên máy — tray 1 trên, tray 2 dưới; ô giãn kín card. Ô kiểu nút
-                 Calculator Win11, màu theo ECellState (Routine_Auto::Trays; lúc mới mở app thì suy từ RunningData.TrayRowsDone).
-                 Phải: 7 nozzle N1…N7 — ô màu theo trạng thái (Empty / Loaded / Processing / Ok / Ng), chữ trạng thái và độ lệch
-                 dX/dZ đo được ở CAM. Ô và chú thích dựng trong code. -->
-            <Grid Grid.Row="0" Margin="0,0,0,8" ColumnSpacing="8">
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="*"/>
-                    <ColumnDefinition Width="*"/>
-                </Grid.ColumnDefinitions>
-
-                <Border Style="{StaticResource CardBorderStyle}" Padding="0">
-                    <Grid>
+            <!-- 2 tray TrayRows × 7 ô xếp chồng dọc như trên máy — tray 1 trên, tray 2 dưới; ô giãn kín card. Trọn chiều cao cột vì
+                 phải chạm được từng hàng (ô tray ShieldCanAssy cao tối thiểu 34 px). Ô kiểu nút Calculator Win11, màu theo ECellState
+                 (Routine_Auto::Trays; lúc mới mở app thì suy từ RunningData.Trays). AUTO: chạm một ô = chọn ô đó để chạy lẻ, nhấn giữ
+                 rồi kéo = cả vùng chữ nhật; ô chọn viền 2 px, ô khác mờ (như ShieldCanAssy.WinUI); Clear (n) bỏ chọn. Ô và chú thích dựng trong code. -->
+            <Border Style="{StaticResource CardBorderStyle}" Padding="0">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*"/>
+                        <RowDefinition Height="Auto"/>
+                    </Grid.RowDefinitions>
+                    <Border Style="{StaticResource CardHeaderStyle}">
+                        <Grid>
+                            <TextBlock Text="Trays" Style="{StaticResource SectionHeaderStyle}"/>
+                            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center" Spacing="8">
+                                <TextBlock x:Name="TrayModeText" Style="{StaticResource CaptionStyle}" VerticalAlignment="Center"/>
+                                <!-- Cao 24 với lề âm: hiện / ẩn không đổi chiều cao dòng tiêu đề. -->
+                                <Button x:Name="ClearCellsButton" Height="24" MinHeight="24" FontSize="11.5" Padding="8,0" Margin="0,-4"
+                                        VerticalAlignment="Center" Visibility="Collapsed" Click="OnClearCellsClick"
+                                        ToolTipService.ToolTip="Clear selected cells — the cycle runs the whole tray again. In AUTO tap or drag cells to select: only those are run."/>
+                            </StackPanel>
+                        </Grid>
+                    </Border>
+                    <Border Grid.Row="1" Style="{StaticResource DividerStyle}"/>
+                    <Grid Grid.Row="2" Padding="12,8,12,4" RowSpacing="6">
                         <Grid.RowDefinitions>
-                            <RowDefinition Height="Auto"/>
                             <RowDefinition Height="Auto"/>
                             <RowDefinition Height="*"/>
                             <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="*"/>
                         </Grid.RowDefinitions>
-                        <Border Style="{StaticResource CardHeaderStyle}">
-                            <TextBlock Text="Trays" Style="{StaticResource SectionHeaderStyle}"/>
-                        </Border>
-                        <Border Grid.Row="1" Style="{StaticResource DividerStyle}"/>
-                        <Grid Grid.Row="2" Padding="12,8,12,4" RowSpacing="6">
-                            <Grid.RowDefinitions>
-                                <RowDefinition Height="Auto"/>
-                                <RowDefinition Height="*"/>
-                                <RowDefinition Height="Auto"/>
-                                <RowDefinition Height="*"/>
-                            </Grid.RowDefinitions>
-                            <StackPanel Orientation="Horizontal" Spacing="12">
-                                <TextBlock Text="Tray 1" Style="{StaticResource SubHeaderStyle}" Margin="0"/>
-                                <TextBlock x:Name="TraySummaryText1" Style="{StaticResource CaptionStyle}" VerticalAlignment="Center"/>
-                            </StackPanel>
-                            <Grid x:Name="TrayMap1" Grid.Row="1"/>
-                            <StackPanel Grid.Row="2" Orientation="Horizontal" Spacing="12" Margin="0,6,0,0">
-                                <TextBlock Text="Tray 2" Style="{StaticResource SubHeaderStyle}" Margin="0"/>
-                                <TextBlock x:Name="TraySummaryText2" Style="{StaticResource CaptionStyle}" VerticalAlignment="Center"/>
-                            </StackPanel>
-                            <Grid x:Name="TrayMap2" Grid.Row="3"/>
-                        </Grid>
-                        <!-- Chú thích màu (chung cho tray và nozzle). Ô cố định 88 px, tự xuống dòng. -->
-                        <VariableSizedWrapGrid x:Name="TrayLegend" Grid.Row="3" Orientation="Horizontal" ItemWidth="88" ItemHeight="24"
-                                               Margin="12,4,12,10"/>
+                        <StackPanel Orientation="Horizontal" Spacing="12">
+                            <TextBlock Text="Tray 1" Style="{StaticResource SubHeaderStyle}" Margin="0"/>
+                            <TextBlock x:Name="TraySummaryText1" Style="{StaticResource CaptionStyle}" VerticalAlignment="Center"/>
+                        </StackPanel>
+                        <Grid x:Name="TrayMap1" Grid.Row="1"/>
+                        <StackPanel Grid.Row="2" Orientation="Horizontal" Spacing="12" Margin="0,6,0,0">
+                            <TextBlock Text="Tray 2" Style="{StaticResource SubHeaderStyle}" Margin="0"/>
+                            <TextBlock x:Name="TraySummaryText2" Style="{StaticResource CaptionStyle}" VerticalAlignment="Center"/>
+                        </StackPanel>
+                        <Grid x:Name="TrayMap2" Grid.Row="3"/>
                     </Grid>
-                </Border>
+                    <!-- Chú thích màu. Ô cố định 88 px, tự xuống dòng. -->
+                    <VariableSizedWrapGrid x:Name="TrayLegend" Grid.Row="3" Orientation="Horizontal" ItemWidth="88" ItemHeight="24"
+                                           Margin="12,4,12,10"/>
+                </Grid>
+            </Border>
 
-                <Border Grid.Column="1" Style="{StaticResource CardBorderStyle}" Padding="0">
+            <Grid Grid.Column="1" RowSpacing="8">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="*"/>
+                    <RowDefinition Height="*"/>
+                </Grid.RowDefinitions>
+
+                <!-- 7 nozzle N1…N7 — ô màu theo trạng thái (Empty / Loaded / Processing / Ok / Ng), chữ trạng thái và Result kiểm tra
+                     đo được ở CAM. -->
+                <Border Style="{StaticResource CardBorderStyle}" Padding="0">
                     <Grid>
                         <Grid.RowDefinitions>
                             <RowDefinition Height="Auto"/>
@@ -354,16 +371,63 @@
                             </Grid>
                         </Border>
                         <Border Grid.Row="1" Style="{StaticResource DividerStyle}"/>
-                        <!-- 7 hàng N1…N7: ô màu + tên, trạng thái, dX / dZ (mm). Dựng trong code (BuildNozzleStrip). -->
+                        <!-- 7 hàng N1…N7: ô màu + tên, trạng thái, Result của lần kiểm tra gần nhất. Dựng trong code (BuildNozzleStrip). -->
                         <Grid x:Name="NozzleStrip" Grid.Row="2" Margin="12,8,12,12" RowSpacing="4" ColumnSpacing="8"/>
                     </Grid>
                 </Border>
-            </Grid>
 
-            <!-- Khung ảnh CAM (một camera cố định, soi từng nozzle): ảnh Bitmap chụp gần nhất (Image) và — chỉ trên máy thật —
-                 control VmRenderControl của VisionMaster (popup bám ô giữ chỗ CamHost) đứng TRÊN ảnh đó, hiện khi đã gắn được
-                 vào Flow/module đặt ở trang Setting (RenderCam; trống = cả Flow LocateCan). -->
-            <Border Grid.Row="1" Style="{StaticResource CardBorderStyle}" Padding="0">
+                <!-- Khung ảnh CAM (một camera cố định, soi từng nozzle): ảnh Bitmap chụp gần nhất (Image) và — chỉ trên máy thật —
+                     control VmRenderControl của VisionMaster (popup bám ô giữ chỗ CamHost) đứng TRÊN ảnh đó, hiện khi đã gắn được
+                     vào Flow/module đặt ở trang Setting (RenderCam; trống = cả Flow kiểm tra). -->
+                <Border Grid.Row="1" Style="{StaticResource CardBorderStyle}" Padding="0">
+                    <Grid>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="*"/>
+                        </Grid.RowDefinitions>
+                        <Border Style="{StaticResource CardHeaderStyle}">
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <TextBlock x:Name="CamTitleText" Text="CAM" Style="{StaticResource SectionHeaderStyle}"
+                                           TextTrimming="CharacterEllipsis"/>
+                                <TextBlock x:Name="CamCapturedText" Grid.Column="1" FontSize="12" Margin="8,0,0,0"
+                                           VerticalAlignment="Center" Foreground="{StaticResource TextTertiaryBrush}"/>
+                                <!-- Hiện/ẩn thanh công cụ (tối) của VmRenderControl — mặc định ẩn. Chỉ hiện khi có control VisionMaster. -->
+                                <Button x:Name="CamToolbarButton" Grid.Column="2" Width="36" Padding="0" Margin="8,0,0,0"
+                                        VerticalAlignment="Center" Visibility="Collapsed" Click="OnCamToolbarClick"
+                                        ToolTipService.ToolTip="Show/hide VisionMaster toolbar (zoom in, zoom out, 1:1, select image)">
+                                    <FontIcon Glyph="&#xE71E;" FontSize="16"/>
+                                </Button>
+                            </Grid>
+                        </Border>
+                        <Border Grid.Row="1" Style="{StaticResource DividerStyle}"/>
+                        <Border Grid.Row="2" Margin="8" Background="#FFF9F9F9" CornerRadius="4" MinHeight="140">
+                            <Grid>
+                                <TextBlock x:Name="CamPlaceholder" Text="(no image)" Foreground="{StaticResource TextTertiaryBrush}"
+                                           HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                <Image x:Name="CamImage" Stretch="Uniform"/>
+                                <Border x:Name="CamHost"/>
+                                <TextBlock x:Name="CamVmText" Visibility="Collapsed" FontSize="11" Foreground="{StaticResource TextSecondaryBrush}"
+                                           TextWrapping="Wrap" VerticalAlignment="Bottom" Margin="8"/>
+                            </Grid>
+                        </Border>
+                    </Grid>
+                </Border>
+            </Grid>
+        </Grid>
+
+        <!-- ═══ Cột phải: log trực tiếp ═══ — mới nhất ở trên; màu theo mức log (Tuấn 02/10): vạch trái + chữ.
+             Info xanh dương, Warning cam, Error đỏ, Debug xám. Dòng dựng trong code (UpdateLog).
+             Mặc định ẩn: LogHost rộng 0, OnLogToggleClick cho giãn tới bề rộng card + khe. Card rộng cố định, neo trái: lộ dần từ
+             sau dải nút, chữ không bị bóp lại. -->
+        <Grid x:Name="LogHost" Grid.Column="2" Width="0">
+            <Border x:Name="LogCard" Style="{StaticResource CardBorderStyle}" Padding="0" Width="290" Margin="0,0,8,0"
+                    HorizontalAlignment="Left" Opacity="0">
                 <Grid>
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto"/>
@@ -371,57 +435,26 @@
                         <RowDefinition Height="*"/>
                     </Grid.RowDefinitions>
                     <Border Style="{StaticResource CardHeaderStyle}">
-                        <Grid>
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="*"/>
-                                <ColumnDefinition Width="Auto"/>
-                                <ColumnDefinition Width="Auto"/>
-                            </Grid.ColumnDefinitions>
-                            <TextBlock x:Name="CamTitleText" Text="CAM" Style="{StaticResource SectionHeaderStyle}"
-                                       TextTrimming="CharacterEllipsis"/>
-                            <TextBlock x:Name="CamCapturedText" Grid.Column="1" FontSize="12" Margin="8,0,0,0"
-                                       VerticalAlignment="Center" Foreground="{StaticResource TextTertiaryBrush}"/>
-                            <!-- Hiện/ẩn thanh công cụ (tối) của VmRenderControl — mặc định ẩn. Chỉ hiện khi có control VisionMaster. -->
-                            <Button x:Name="CamToolbarButton" Grid.Column="2" Width="36" Padding="0" Margin="8,0,0,0"
-                                    VerticalAlignment="Center" Visibility="Collapsed" Click="OnCamToolbarClick"
-                                    ToolTipService.ToolTip="Show/hide VisionMaster toolbar (zoom in, zoom out, 1:1, select image)">
-                                <FontIcon Glyph="&#xE71E;" FontSize="16"/>
-                            </Button>
-                        </Grid>
+                        <TextBlock Text="Log" Style="{StaticResource SectionHeaderStyle}"/>
                     </Border>
                     <Border Grid.Row="1" Style="{StaticResource DividerStyle}"/>
-                    <Border Grid.Row="2" Margin="8" Background="#FFF9F9F9" CornerRadius="4" MinHeight="140">
-                        <Grid>
-                            <TextBlock x:Name="CamPlaceholder" Text="(no image)" Foreground="{StaticResource TextTertiaryBrush}"
-                                       HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                            <Image x:Name="CamImage" Stretch="Uniform"/>
-                            <Border x:Name="CamHost"/>
-                            <TextBlock x:Name="CamVmText" Visibility="Collapsed" FontSize="11" Foreground="{StaticResource TextSecondaryBrush}"
-                                       TextWrapping="Wrap" VerticalAlignment="Bottom" Margin="8"/>
-                        </Grid>
-                    </Border>
+                    <ScrollViewer x:Name="LogScroll" Grid.Row="2" Margin="4" VerticalScrollBarVisibility="Auto"
+                                  HorizontalScrollBarVisibility="Disabled">
+                        <StackPanel x:Name="LogPanel"/>
+                    </ScrollViewer>
                 </Grid>
             </Border>
         </Grid>
 
-        <!-- ═══ Cột phải: log trực tiếp ═══ — mới nhất ở trên; màu theo mức log (Tuấn 02/10): vạch trái + chữ.
-             Info xanh dương, Warning cam, Error đỏ, Debug xám. Dòng dựng trong code (UpdateLog). -->
-        <Border Grid.Column="2" Style="{StaticResource CardBorderStyle}" Padding="0">
-            <Grid>
-                <Grid.RowDefinitions>
-                    <RowDefinition Height="Auto"/>
-                    <RowDefinition Height="Auto"/>
-                    <RowDefinition Height="*"/>
-                </Grid.RowDefinitions>
-                <Border Style="{StaticResource CardHeaderStyle}">
-                    <TextBlock Text="Log" Style="{StaticResource SectionHeaderStyle}"/>
-                </Border>
-                <Border Grid.Row="1" Style="{StaticResource DividerStyle}"/>
-                <ScrollViewer x:Name="LogScroll" Grid.Row="2" Margin="4" VerticalScrollBarVisibility="Auto"
-                              HorizontalScrollBarVisibility="Disabled">
-                    <StackPanel x:Name="LogPanel"/>
-                </ScrollViewer>
-            </Grid>
-        </Border>
+        <!-- Nút ẩn / hiện card Log: thanh mảnh cố định sát mép phải, giữa chiều cao; mở và đóng đều bấm đúng một chỗ. Mũi tên chỉ hướng card sẽ đi. -->
+        <Button x:Name="LogToggleButton" Grid.Column="3" Width="14" Height="120" Padding="0" VerticalAlignment="Center"
+                CornerRadius="7" Click="OnLogToggleClick" AutomationProperties.Name="Show or hide the log"
+                ToolTipService.ToolTip="Show/hide the log">
+            <FontIcon Glyph="&#xE76B;" FontSize="10" RenderTransformOrigin="0.5,0.5">
+                <FontIcon.RenderTransform>
+                    <RotateTransform x:Name="LogChevronRotate"/>
+                </FontIcon.RenderTransform>
+            </FontIcon>
+        </Button>
     </Grid>
 </UserControl>

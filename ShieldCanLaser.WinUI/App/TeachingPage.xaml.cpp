@@ -1137,8 +1137,8 @@ namespace winrt::ShieldCanLaser::implementation
         ui::SetText(SelectorHint(), std::format("{} rows per tray — set in Cycle Parameters", rows));
         ui::SetText(LayoutHint(), pick
             ? std::string("Nozzle 1 exactly over column 1 of the row, Z at pick height. Teach Row 1 and the Last row; rows in between are interpolated. One tray row = 7 cans picked at once.")
-            : cam ? std::string("Nozzle 1 / nozzle 7 centered in the CAM image (X, Z). N2…N6 are interpolated. Each nozzle is brought here for the LocateCan Flow.")
-                  : std::string("Nozzle 1 / nozzle 7 at the laser field center (X, Z). N2…N6 are interpolated; per-nozzle trim and the measured X/Z offset are added at run time (Vision Edit)."));
+            : cam ? std::string("Nozzle 1 / nozzle 7 centered in the CAM image (X, Z). N2…N6 are interpolated. After marking, each can is brought here for the inspection Flow.")
+                  : std::string("Nozzle 1 / nozzle 7 at the laser field center (X, Z). N2…N6 are interpolated; the per-nozzle trim (Vision Edit) is added at run time — no vision compensation."));
 
         ui::SetText(FirstTitle(), pick ? std::string("Row 1") : std::string("Nozzle 1 (N1)"));
         ui::SetText(LastTitle(), pick ? (rows > 1 ? std::format("Last row (row {})", rows) : std::string("Last row (not used: 1 row)"))

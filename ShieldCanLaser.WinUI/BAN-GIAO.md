@@ -14,12 +14,13 @@ Phạm vi: thư mục `ShieldCanLaser.WinUI\` — phần mềm máy khắc laser
    4–6 dưới đây chép từ bàn giao máy Slit vì không đổi.
 2. **Phần đặc thù máy viết lại theo PLAN-LASER.md §6**: 3 trục X/Y/Z (Panasonic MINAS A6B, mỗi driver một slave), 7 nozzle
    trên cụm X–Z, 2 tray 7 hàng × 7 cột trên Y, một camera cố định, laser kích bằng MỘT ngõ ra số + chờ `MarkTimeMs`
-   (không giao tiếp, không gửi độ lệch — Tuấn chốt 2026-10-27). Bù độ lệch chỉ bằng trục X và Z, không có trục xoay.
-3. **875 phép kiểm tự động đều đạt** (mục 7), chạy hoàn toàn mô phỏng, kể cả chu trình Auto đủ vòng (gắp hàng, soi từng
-   nozzle, khắc đã bù, trả về tray, chờ thay tray) và chuỗi hiệu chuẩn (lưới X × Z, SET MASTER, thử laser).
-4. **Chưa chạy trên phần cứng thật lần nào.** Bảng I/O (PLAN-LASER.md §5) là BẢN TẠM — chốt theo sơ đồ điện. Chiều Z
-   (gốc ở trên, dương đi xuống như máy ShieldCanAssy) và dấu bù `GainX/GainZ` (mặc định −1) phải kiểm trên máy; đổi ở
-   trang Setting, không sửa code.
+   (không giao tiếp — Tuấn chốt 2026-10-27). Vision chỉ KIỂM TRA sau khi khắc, không bù độ lệch (Tuấn chốt 2026-11-08):
+   App đọc một output `Result` của Group `Flow.Group` cấu hình ở Setting.
+3. **927 phép kiểm tự động đều đạt** (mục 7), chạy hoàn toàn mô phỏng, kể cả chu trình Auto đủ vòng (gắp hàng, khắc từng
+   nozzle, CAM kiểm tra từng can, trả về tray, chờ thay tray) và các nút thử của trang Vision Edit (thử khắc, trim, kiểm tra).
+4. **Chưa chạy trên phần cứng thật lần nào.** Bảng I/O (PLAN-LASER.md §5) theo danh sách của Tuấn 2026-11-03, chưa đối chiếu trên máy. Chiều Z
+   (gốc ở trên, dương đi xuống như máy ShieldCanAssy) phải kiểm trên máy. Đọc `Result` của Group qua SDK C++ chưa chạy
+   được với solution thật (máy dev không nạp được solution).
 
 ---
 
@@ -62,14 +63,14 @@ Những chỗ đặc thù máy (đọc trước khi sửa):
 | File | Nội dung |
 |---|---|
 | `Core\Infor\AxisId.h`, `IoMap.h`, `Enums.h`, `AlarmCode.h` | 3 trục; bảng DI/DO (`NozzleCount = 7`, `TrayCount = 2`); bước Auto S10–S60; mã alarm trục 2000/2100/2200, chu trình 5001–5006 |
-| `Core\Data\SystemData.*` | `LaserComp` (GainX/GainZ/MaxCompMm/LaserPulseMinMs), `VisionCalib` (lưới X × Z, nozzle hiệu chuẩn), tên Flow/biến `VisionOutputs` |
-| `Core\Data\Model\ModelData.*` | `AutoParams` (TrayRows, VacuumOn/OffMs, PickSlowLength, UseVision, UseLaser, MarkTimeMs); 8 điểm teach (`AutoPoints`), nội suy `PickPoint/CamPoint/LaserPoint`; `VisionCalib::Nozzles[7]` (Ref, Trim) |
-| `Core\Data\RunningData.*` | `TrayRowsDone[2]`, `LastRowResult/Tray/Index` |
-| `Core\Communication\VmContract.*`, `VisionConnect.*`, `Sim\FakeVision.*`, `GlobalVarSync.*`, `VmOutCheck.*` | một camera, một Flow `LocateCan`, biến `X_mm/Z_mm/Nozzle/RunId/IsLocate`, output `Found/Echo*/Obj*` |
-| `Core\Controller\VmCycle.*` | dựng lời gọi Flow, đọc kết quả, độ lệch + đích bù (`Deviation`), kiểm tra lưới (`JudgeGrid`), cổng hiệu chuẩn |
+| `Core\Data\SystemData.*` | `VisionOutputs` (đường dẫn kiểm tra `InspectPath` = Flow.Group, output ảnh, khung CAM), `LaserPulseMinMs` |
+| `Core\Data\Model\ModelData.*` | `AutoParams` (TrayRows, VacuumOn/OffMs, PickSlowLength, UseVision, UseLaser, MarkTimeMs); 8 điểm teach (`AutoPoints`), nội suy `PickPoint/CamPoint/LaserPoint`; `LaserTrim::Nozzles[7]` (trim X/Z) |
+| `Core\Data\RunningData.*`, `TrayCells.*` | `Trays[2]` (ô đã xong, ô chọn chạy lẻ), `LastRowResult/Tray/Index`, đồng hồ Cycle Time (`StartCycleClock`, `FinishCycle`, `LastTackSec`) |
+| `Core\Communication\VmContract.*`, `IVisionDevice.h`, `VisionConnect.*`, `Sim\FakeVision.*` | một camera; chạy Flow, đọc output của Flow hoặc của một Group (`VmCallRequest::Module`); kiểm đường dẫn Group (`CheckModulePath`) |
+| `Core\Controller\VmCycle.*` | lời gọi kiểm tra (`InspectRequest`) và cách đọc `Result` (`ReadInspect`: 1 = OK) |
 | `Core\Controller\Routine_Auto.*` | chu trình PLAN-LASER.md §2; sơ đồ tray/nozzle cho trang Main (`Trays()`, `Nozzles()`, `ProgressText()`) |
-| `Core\Controller\Routine_Calib.*` | lưới 9 điểm, VERIFY GRID, SET MASTER, GoToLaser/TestMark/SetTrim |
-| `Core\Controller\McControl.*` | nút cứng START/STOP/RESET, đèn nút, `ResetTrays()` |
+| `Core\Controller\Routine_Calib.*` | nút thử trang Vision Edit: GoToLaser/TestMark/SetTrim, GoToCam/Inspect |
+| `Core\Controller\McControl.*` | nút cứng START/STOP/RESET, đèn nút, `ResetTrays()`, chọn ô chạy lẻ (`ToggleCellSelection`, `SetCellsSelected`, `ClearCellSelection`, `CellSelectionLocked`) |
 
 Quy ước code (giữ từ bản port): chuỗi `std::string` UTF-8; mọi thao tác dài là hàm CHẶN nhận `std::stop_token`, chạy
 trên luồng nền; huỷ = `base::OperationCanceled`; sự kiện = `base::Event<T>`; giao diện không binding, đọc trạng thái
@@ -156,24 +157,26 @@ Bẫy build đã xử lý (đừng bỏ): `/EHs` cho mọi project gọi SDK Vis
 `x64` bị bỏ khi chép cây nguồn bằng robocopy /XD — thiếu `ThirdParty\soem\oshw\win32\wpcap\Lib\x64\wpcap.lib` thì
 link báo LNK1104, chép lại từ máy Slit.
 
+Sau khi khởi động lại máy, build App có thể báo C3859 và C1076 dù còn nhiều RAM: xoá `build\obj\x64\Release\App\pch.pch`
+rồi build lại.
+
 ---
 
 ## 6. VisionMaster
 
 | Phần | Cách làm | File |
 |---|---|---|
-| Lệnh (nạp solution, chạy Flow, biến toàn cục, đọc output, ảnh) | SDK C++ `iMVS-6000PlatformSDK`, trong tiến trình | `Core\Vision\VisionMasterDevice.*` |
+| Lệnh (nạp solution, chạy Flow, đọc output của Flow/Group, ảnh) | SDK C++ `iMVS-6000PlatformSDK`, trong tiến trình | `Core\Vision\VisionMasterDevice.*` |
 | Trạng thái, khoá lệnh, canh giờ, alarm, log | `Core\Communication\VisionConnect.*` |
 | Khung ảnh, trình soạn Flow | ActiveX trong popup sở hữu bám theo ô giữ chỗ | `App\Ui\VmPane.*` |
 
-Hợp đồng Flow của máy này (PLAN-LASER.md §4.1): một Flow `LocateCan`; App ghi `X_mm`, `Z_mm`, `Nozzle`, `RunId` (float)
-và `IsLocate` (int: 1 = soi, 0 = nạp điểm hiệu chuẩn) rồi chạy Flow; Flow trả `Found`, `EchoRunId`, `EchoX_mm`,
-`EchoZ_mm` (bắt buộc) và `ObjFound`, `ObjX_mm`, `ObjY_mm`, `ObjRunId` (Script "CanAbs", tuỳ chọn). Nút CHECK VARS /
-CHECK FLOW ở trang Setting đối chiếu solution với hợp đồng này. `CoreTests.exe vmprobe` thử thiết bị thật trên máy
-có VisionMaster.
+Hợp đồng Flow của máy này (PLAN-LASER.md §4.1): vision chỉ kiểm tra sau khi khắc. Một đường dẫn `Flow.Group` ở trang
+Setting (mặc định `Flow1.GroupInspection`); mỗi can App chạy Flow đó rồi đọc output `Result` (int hoặc float) của Group:
+1 = OK, khác 1 = NG. App không ghi biến toàn cục nào. Nút CHECK PATH ở trang Setting tra Flow và Group trong solution đang
+nạp, không chạy Flow; SDK C++ không liệt kê được output của Group khi chưa chạy nên `Result` chỉ kiểm được ở lần chạy đầu.
+`CoreTests.exe vmprobe` thử thiết bị thật trên máy có VisionMaster.
 
-SDK C++ không tạo được biến toàn cục và không duyệt được IO từng module — như máy Slit; App báo rõ việc phải làm trong
-VisionMaster.
+Đọc output của Group (`IMVSGroupTool::GetResult`) viết theo header của SDK, chưa chạy được với solution thật.
 
 ---
 
@@ -183,13 +186,13 @@ VisionMaster.
 
 | Nhóm | Số phép kiểm | Nội dung chính |
 |---|---|---|
-| Infra | 168 | IoMap/AlarmCode/AxisId 3 trục; system.json (3 trục A6B, LaserComp, VisionCalib) đọc-ghi, di trú mã driver cũ; model 8 điểm + nội suy hàng/CAM/laser; RunningData tray; alarms.json (mã 2205, 5004, 5006…); alarm, log, phân quyền |
+| Infra | 185 | IoMap/AlarmCode/AxisId 3 trục; system.json (3 trục A6B, đường dẫn kiểm tra, khoá cũ bị lờ) đọc-ghi, di trú mã driver cũ; model 8 điểm + nội suy hàng/CAM/laser, trim (lấy lại từ khoá "Calib" cũ); RunningData tray; alarms.json (mã 2205, 5006…, mã bù/hiệu chuẩn đã bỏ); alarm, log, phân quyền |
 | EtherCatSim | 67 | ConnectAllAxis, servo, chạy, jog, về gốc, I/O trên bus mô phỏng; ESI thật |
 | Realtime | 37 | vùng đệm process-image; luồng RT ghim core, trễ < 500 µs |
-| Motion | 172 | FakeAxis/FakeIo (7 van ↔ 7 cảm biến, đếm xung laser), MotionConnect 3 trục + Z_SAFE, đường EtherCAT (4 slave), các alarm kết nối |
-| Vision | 152 | VmContract, VmOutCheck (Script CanAbs), 5 biến toàn cục, FakeVision (độ lệch từng nozzle, nhánh IsLocate), VmCycle (Deviation, JudgeGrid, EvaluateCalib), VisionConnect |
-| Controller | 279 | khởi tạo, về gốc, AUTO/MANUAL, EMG/rèm/khí, thao tác tay, hiệu chuẩn (lưới, VERIFY, SET MASTER, GoToLaser/TestMark/trim), chu trình Auto đủ vòng (hút hụt, bù X/Z đúng số, vượt ngưỡng, vision NG, STOP = giữ tại chỗ, dừng ở checkpoint trả hàng về, chờ thay tray, RESET TRAY) |
-| **Tổng** | **875** | đều đạt (2026-10-27) |
+| Motion | 175 | FakeAxis/FakeIo (7 van ↔ 7 cảm biến, đếm xung laser), MotionConnect 3 trục + Z_SAFE, đường EtherCAT (4 slave), các alarm kết nối |
+| Vision | 83 | VmContract, đường dẫn Flow.Group, VmCycle (InspectRequest, ReadInspect: 1 = OK), FakeVision (Result từng nozzle, lỗi một lần, thiếu Result), VisionConnect (quá giờ, huỷ, alarm 4001/4003) |
+| Controller | 380 | khởi tạo, về gốc, AUTO/MANUAL, EMG/rèm, START #2, phanh Z, van thổi, xung dừng laser, thao tác tay, nút thử Vision Edit (GoToLaser + trim, TestMark, GoToCam, Inspect), chu trình Auto đủ vòng (đường dẫn sai → dừng trước khi khắc, hút hụt, khắc tại điểm teach, kiểm tra NG, Flow lỗi → 5006, STOP lúc gắp → trả hàng chưa khắc, STOP lúc kiểm tra → xong hàng rồi dừng, chờ thay tray, RESET TRAY), chạy lẻ (chỉ van, laser và kiểm tra của ô chọn, về Idle, không khắc lại kể cả trong cùng hàng, khoá lúc chạy, tray vắng, chọn trước cho tray mới) |
+| **Tổng** | **927** | đều đạt 6/6 lần: 3 lần thường, 3 lần dưới tải 100% CPU (2026-11-08, sau khi chuyển vision sang chỉ kiểm tra). Ngày 2026-11-03 có một lần chạy dưới tải, kiểm thử Realtime vượt ngưỡng (trễ 2,2 ms so với 0,5 ms), không lặp lại, chưa rõ nguyên nhân |
 
 Giao diện: `ShieldCanLaser.exe --root <tạm> --shot <thư mục>` ở chế độ mô phỏng, xem ảnh từng trang.
 
@@ -199,12 +202,12 @@ Giao diện: `ShieldCanLaser.exe --root <tạm> --shot <thư mục>` ở chế �
 
 | Trang | Nội dung |
 |---|---|
-| Main | 2 tray 7 × TrayRows ô (màu theo ECellState), dải 7 nozzle (giữ can / đang soi / đã khắc / NG, độ lệch dX dZ), ảnh camera, bước Auto, tiến độ hàng, bộ đếm, nút Auto/Manual/Start/Stop/Origin/Init, RESET TRAY |
+| Main | 2 tray 7 × TrayRows ô trọn chiều cao cột giữa (màu theo ECellState, ghi hàng-cột, AUTO: chạm hoặc kéo = chọn ô chạy lẻ, viền 2 px, Clear (n)), dải 7 nozzle (giữ can / đang khắc, kiểm tra / OK / NG, Result), ảnh camera, bước Auto, tiến độ hàng, bộ đếm, công tắc Auto/Manual, nút Start/Stop/Origin/Init, RESET TRAY |
 | Manual | 3 trục (jog/inching/servo/home/move), 7 van chân không + cảm biến, đèn CAM, xung laser thử, bảng 32 DI / 32 DO, công tắc mô phỏng |
 | Teaching | model, tham số Auto, tab Pick / CAM / Laser / Other, bảng điểm nội suy |
-| Setting | 3 trục, Z_SAFE, cảm biến tuỳ chọn, vision (đường dẫn, tên Flow/biến, CHECK VARS/FLOW), LaserComp, RT |
+| Setting | 3 trục, Z_SAFE, cảm biến tuỳ chọn, vision (solution, đường dẫn Flow.Group + CHECK PATH, output ảnh, khung CAM), xung laser tối thiểu, RT |
 | EtherCAT | giữ nguyên |
-| Vision Edit | lưới 9 điểm X × Z + VERIFY, SET MASTER từng nozzle, thử laser + trim, cổng hiệu chuẩn |
+| Vision Edit | thử khắc từng nozzle (tới điểm khắc + trim, TEST MARK, chỉnh trim), thử kiểm tra (tới CAM, INSPECT xem Result) |
 | Alarm | giữ nguyên |
 
 ---
@@ -212,14 +215,15 @@ Giao diện: `ShieldCanLaser.exe --root <tạm> --shot <thư mục>` ở chế �
 ## 9. Đã kiểm chứng và chưa kiểm chứng
 
 - Đã: mọi logic lõi bằng mô phỏng (mục 7); build app.
-- Chưa: phần cứng thật (bảng I/O, chiều Z, dấu bù, thời gian khắc), solution VisionMaster thật cho Flow `LocateCan`,
+- Chưa: phần cứng thật (bảng I/O, chiều Z, thời gian khắc), solution VisionMaster thật có Group kiểm tra (đọc `Result`),
   tốc độ/gia tốc thực của A6B, cữ hành trình.
 
 ---
 
 ## 10. Việc tiếp theo đề xuất
 
-1. Chốt sơ đồ điện → sửa `Core\Infor\IoMap.h` và `Config\alarms.json` (tên X/Y), chạy lại CoreTests.
-2. Trên máy: Origin → xác nhận chiều Z và Z_SAFE → teach 8 điểm → lưới X × Z → SET MASTER 7 nozzle → thử laser từng
-   nozzle, chỉnh `GainX/GainZ` (dấu) và trim.
-3. Dựng solution VisionMaster theo hợp đồng §4.1, kiểm bằng CHECK VARS / CHECK FLOW.
+1. Đối chiếu bảng I/O (`Core\Infor\IoMap.h`) với sơ đồ điện, bấm thử từng chân ở trang Manual. Kiểm phanh Z: mất nguồn
+   hoặc mất bus thì Y020 phải rớt và Z không rơi.
+2. Trên máy: Origin → xác nhận chiều Z và Z_SAFE → teach 8 điểm → thử khắc từng nozzle ở trang Vision Edit, chỉnh trim.
+3. Dựng solution VisionMaster có Group kiểm tra trả `Result` (PLAN-LASER.md §4.1), nhập `Flow.Group` ở Setting, CHECK PATH,
+   rồi INSPECT thử một can ở trang Vision Edit.

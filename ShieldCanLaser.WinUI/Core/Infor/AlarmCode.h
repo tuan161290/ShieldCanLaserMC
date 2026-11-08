@@ -73,18 +73,13 @@ namespace scs
         static constexpr int VisionTriggerTimeout = 4003;
         static constexpr int VisionNotFound = 4004;
         static constexpr int VisionLowScore = 4005;
-        static constexpr int VisionNotCalibrated = 4006;
-        static constexpr int VisionContract = 4010;           // Flow trả số không khớp hợp đồng
-        static constexpr int VisionCalibNotReady = 4011;      // hiệu chuẩn chưa sẵn sàng (cổng phía App)
-        static constexpr int VisionCalibExpired = 4090;       // Warning
 
         // ── 5000–5099 Chu trình ──
         static constexpr int PickFailed = 5001;
         static constexpr int ProductDropped = 5002;
         static constexpr int PlaceFailed = 5003;
-        static constexpr int CompensationOutOfRange = 5004;   // độ lệch vision vượt ngưỡng bù — Warning, ô NG
         static constexpr int PlaceTargetGuard = 5005;
-        static constexpr int VisionNg = 5006;                 // vision không thấy can trên nozzle — Warning, ô NG
+        static constexpr int VisionNg = 5006;                 // không kiểm tra được can (Flow lỗi, thiếu Result) — Warning, ô NG
         static constexpr int ConsecutiveNg = 5010;
         static constexpr int TrayEmpty = 5020;                // Warning — thông báo chờ thay tray
         static constexpr int ResumeIntegrity = 5030;

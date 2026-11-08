@@ -1,5 +1,6 @@
 #include "Controller/Routine_Origin.h"
 
+#include <algorithm>
 #include <cmath>
 #include <format>
 
@@ -7,12 +8,16 @@
 #include "Communication/AxisAngle.h"
 #include "Infor/AlarmManager.h"
 #include "Infor/AxisId.h"
+#include "Infor/IoMap.h"
 #include "Utility/Log/LogWorker.h"
 
 namespace scs
 {
     namespace
     {
+        /// Thời gian phanh Z nhả hẳn sau khi DO lên. Phỏng đoán — chỉnh theo datasheet phanh khi có máy.
+        constexpr int ZBrakeReleaseMs = 200;
+
         template <class Arr>
         std::vector<std::string> Names(const Arr& a) { return std::vector<std::string>(a.begin(), a.end()); }
 
@@ -171,6 +176,20 @@ namespace scs
             if (ct.stop_requested()) return false;
             if (sw.ElapsedMilliseconds() > 5000) return false;
             base::Delay(20);
+        }
+
+        // Vòng quét nhả phanh Z sau khi servo Z bật. Trục vừa bật thì chờ phanh nhả hẳn, không về gốc khi phanh còn ăn.
+        bool zJustOn = std::any_of(pending.begin(), pending.end(), [](const auto& a) { return a->Name() == AxisId::Z; });
+        auto io = m_func.Io();
+        if (zJustOn && io)
+        {
+            base::Stopwatch brake;
+            while (!io->GetDo(IoMap::ZAxisBrakeRelease) || brake.ElapsedMilliseconds() < ZBrakeReleaseMs)
+            {
+                if (ct.stop_requested()) return false;
+                if (brake.ElapsedMilliseconds() > 2000) return false;
+                base::Delay(20);
+            }
         }
         return true;
     }

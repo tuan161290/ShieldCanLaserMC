@@ -48,7 +48,7 @@ namespace scs
         int VacuumOffMs = 150;
         /// <summary>Đoạn cuối (mm) trước cao độ hút/trả Z chạy ở tốc độ THẤP.</summary>
         double PickSlowLength = 2.0;
-        /// <summary>Bật bước CAM. Tắt = khắc đúng điểm teach, không bù.</summary>
+        /// <summary>Bật bước CAM kiểm tra sau khi khắc. Tắt = khắc xong là ô OK, không soi.</summary>
         bool UseVision = true;
         /// <summary>Bật kích laser. Tắt = chạy khô: đi đủ các điểm, không kích DO.</summary>
         bool UseLaser = true;
@@ -83,42 +83,32 @@ namespace scs
         static std::vector<std::pair<std::string, std::string>> All();
     };
 
-    /// <summary>
-    /// Bản ghi hiệu chuẩn của MỘT nozzle — App đo rồi ghi vào đây (PLAN-LASER.md §4.1, §4.2). <c>Ref</c> là
-    /// <c>Rel = (ObjX − X_mm, ObjY − Z_mm)</c> đo lúc "SET MASTER" với can mẫu lắp chuẩn; chu trình lấy độ lệch = Rel
-    /// đo được − Ref. <c>Trim</c> cộng thẳng vào điểm khắc (mm), tối đa ±1 mm.
-    /// </summary>
-    struct NozzleCalib
+    /// <summary>Trim của MỘT nozzle (mm) — cộng thẳng vào điểm khắc Laser(k), tối đa ±1 mm. Chỉnh tay ở trang Vision Edit
+    /// sau khi xem mẫu khắc thử; máy không bù độ lệch can (PLAN-LASER.md §4).</summary>
+    struct NozzleTrim
     {
-        double RefX = 0, RefZ = 0;
-        std::optional<TimePoint> RefAt;
-        double TrimX = 0, TrimZ = 0;
-
-        bool RefMeasured() const { return RefAt.has_value(); }
+        double X = 0, Z = 0;
     };
 
-    /// <summary>Bản ghi hiệu chuẩn vision của model (JSON khoá "Calib"): kiểm tra lưới dùng chung + 7 nozzle.</summary>
-    struct VisionCalib
+    /// <summary>Trim 7 nozzle của model (JSON khoá "Trim").</summary>
+    struct LaserTrim
     {
         static constexpr int NozzleCount = 7;
         static constexpr double MaxTrimMm = 1.0;
 
-        /// <summary>Kiểm tra lưới X × Z đạt lúc nào; nullopt = chưa đạt.</summary>
-        std::optional<TimePoint> GridVerifiedAt;
-        std::array<NozzleCalib, NozzleCount> Nozzles;
+        std::array<NozzleTrim, NozzleCount> Nozzles;
 
         /// <summary>Nozzle 1…7 (ngoài khoảng thì kẹp về 1 hoặc 7).</summary>
-        NozzleCalib& Nozzle(int k) { return Nozzles[ClampIndex(k)]; }
-        const NozzleCalib& Nozzle(int k) const { return Nozzles[ClampIndex(k)]; }
-        bool GridVerified() const { return GridVerifiedAt.has_value(); }
+        NozzleTrim& Nozzle(int k) { return Nozzles[ClampIndex(k)]; }
+        const NozzleTrim& Nozzle(int k) const { return Nozzles[ClampIndex(k)]; }
 
     private:
         static size_t ClampIndex(int k) { return static_cast<size_t>(k < 1 ? 0 : k > NozzleCount ? NozzleCount - 1 : k - 1); }
     };
 
     /// <summary>
-    /// Dữ liệu một model sản phẩm — lưu ở Model\&lt;tên&gt;.json: danh sách điểm teach, tham số chu trình Auto và bản
-    /// ghi hiệu chuẩn vision.
+    /// Dữ liệu một model sản phẩm — lưu ở Model\&lt;tên&gt;.json: danh sách điểm teach, tham số chu trình Auto và trim
+    /// điểm khắc của từng nozzle.
     /// </summary>
     struct ModelData
     {
@@ -129,7 +119,7 @@ namespace scs
         std::vector<std::shared_ptr<TeachPosition>> TeachPositions;
 
         AutoParams Auto;
-        VisionCalib Calib;
+        LaserTrim Trim;
 
         /// <summary>Thêm các điểm teach của chu trình Auto còn thiếu. Trả về số điểm đã thêm.</summary>
         int EnsureAutoPoints();

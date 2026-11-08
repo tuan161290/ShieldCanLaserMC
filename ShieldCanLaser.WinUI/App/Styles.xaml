@@ -7,9 +7,9 @@
          Windows 11 LIGHT — 3 lớp (Tuấn 2026-10-06), giữ nguyên tên khoá của bản WPF (Themes\Palette.xaml,
          Themes\Controls.xaml) để XAML các trang chuyển sang gần như không đổi tên:
 
-           Lớp 0  Background  nền cửa sổ (Mica, không tắt khi mất focus — AppBackdrop): thanh tiêu đề, thanh tab, thanh trạng
+           Lớp 0  Background  nền cửa sổ (Acrylic phủ 80 %, không tắt khi mất focus — AppBackdrop): thanh tiêu đề, thanh tab, thanh trạng
                               thái, khe hở giữa các card.
-           Lớp 1  Card        trắng 50 % trên Mica, viền 1 px, bo 8. Tiêu đề card và các phần bên trong ngăn nhau bằng
+           Lớp 1  Card        trắng 80 % trên nền cửa sổ, viền 1 px, bo 8. Tiêu đề card và các phần bên trong ngăn nhau bằng
                               ĐƯỜNG KẺ MẢNH 1 px (DividerBrush), không lồng hộp.
            Lớp 2  Control     #FFFFFF: nút, ô nhập, danh sách — viền 1 px, cạnh dưới đậm hơn, bo 4.
 
@@ -24,7 +24,7 @@
     <!-- Lớp 1 -->
     <!-- Trong mờ để Mica của lớp nền lộ qua (Tuấn 2026-10-06: card đặc #FBFBFB "trắng quá"). Windows 11 gốc dùng
          #B3FFFFFF (70 %); muốn card đậm/nhạt hơn thì chỉnh hai số đầu (alpha). -->
-    <SolidColorBrush x:Key="CardBrush" Color="#80FFFFFF"/>
+    <SolidColorBrush x:Key="CardBrush" Color="#CCFFFFFF"/>
     <SolidColorBrush x:Key="CardSecondaryBrush" Color="#FFF6F6F6"/>
     <!-- Viền card và đường kẻ: ĐEN TRONG MỜ, không phải xám đặc. Xám đặc #E3E3E3 chỉ tối hơn nền khi nền là Mica xám
          nhạt; trên Acrylic (thấy hình nền nhiều màu / cửa sổ tối phía sau) nó thành vạch TRẮNG (Tuấn 2026-10-06). Đen 10 %
@@ -87,10 +87,10 @@
     <SolidColorBrush x:Key="NotUseBrush" Color="#FF464646"/>
     <SolidColorBrush x:Key="BypassBrush" Color="#FFA5A5A5"/>
     <SolidColorBrush x:Key="VisionOkBrush" Color="#FFC8EBC8"/>
-    <!-- Ô sơ đồ tray trang Main (như TrayCell*Brush của ShieldCANAssy, Themes/Palette.xaml): trống trắng, có hàng xanh nhạt,
-         đang làm vàng, OK / NG theo palette nghiệp vụ, tray vắng xám. -->
-    <SolidColorBrush x:Key="TrayCellEmptyBrush" Color="#FFFFFFFF"/>
-    <SolidColorBrush x:Key="TrayCellLoadedBrush" Color="#FFCFE3F7"/>
+    <!-- Ô sơ đồ tray trang Main: có hàng trắng, đang làm vàng, OK / NG theo palette nghiệp vụ, đã xong từ phiên trước xám.
+         Trạng thái mặc định của mọi ô là Loaded, không có ô trống. Nozzle rảnh cũng trắng, đang giữ can xanh nhạt. -->
+    <SolidColorBrush x:Key="NozzleHoldingBrush" Color="#FFCFE3F7"/>
+    <SolidColorBrush x:Key="TrayCellLoadedBrush" Color="#FFFFFFFF"/>
     <SolidColorBrush x:Key="TrayCellProcessingBrush" Color="#FFFFE080"/>
     <SolidColorBrush x:Key="TrayCellOkBrush" Color="#FF86C691"/>
     <SolidColorBrush x:Key="TrayCellNgBrush" Color="#FFE94949"/>

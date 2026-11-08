@@ -134,22 +134,43 @@ namespace ui
     void SetGlow(FrameworkElement const& host, uint32_t argb)
     {
         if (!host) return;
+
+        // Tắt = ẨN visual đang gắn, không gỡ: SetElementChildVisual(host, nullptr) không gỡ được quầng đã gắn
+        // (ShieldCANAssy 2026-10-18). Bật lại thì dùng lại chính visual đó.
+        namespace comp = winrt::Microsoft::UI::Composition;
+        auto child = ElementCompositionPreview::GetElementChildVisual(host);
+        auto existing = child ? child.try_as<comp::SpriteVisual>() : nullptr;
         if (argb == 0)
         {
-            ElementCompositionPreview::SetElementChildVisual(host, nullptr);
+            if (existing) existing.IsVisible(false);
             return;
+        }
+        if (existing)
+        {
+            auto current = existing.Shadow();
+            if (auto shadow = current ? current.try_as<comp::DropShadow>() : nullptr)
+            {
+                existing.Brush(existing.Compositor().CreateColorBrush(ColorOf(argb)));
+                shadow.Color(ColorOf(argb));
+                existing.IsVisible(true);
+                return;
+            }
         }
 
         // Quầng sáng phẳng: bóng đổ không lệch (Offset 0), toả đều quanh phần tử. Visual bám kích thước
         // của host (RelativeSizeAdjustment) nên không cần nghe SizeChanged.
         auto compositor = ElementCompositionPreview::GetElementVisual(host).Compositor();
         auto sprite = compositor.CreateSpriteVisual();
+        // Lớp màu là hình chữ nhật, nút thì bo góc: thu vào 1,5 px mỗi cạnh để góc vuông nằm khuất sau nút, không lộ ra ở góc bo
+        // (đủ cho bán kính bo tới 5 px). Bóng đổ vẫn toả ra ngoài, đậm hơn để bù phần thu vào.
         sprite.RelativeSizeAdjustment({ 1.0f, 1.0f });
+        sprite.Size({ -3.0f, -3.0f });
+        sprite.Offset({ 1.5f, 1.5f, 0.0f });
         sprite.Brush(compositor.CreateColorBrush(ColorOf(argb)));
         auto shadow = compositor.CreateDropShadow();
         shadow.BlurRadius(12.0f);
         shadow.Offset({ 0.0f, 0.0f, 0.0f });
-        shadow.Opacity(0.6f);
+        shadow.Opacity(0.85f);
         shadow.Color(ColorOf(argb));
         sprite.Shadow(shadow);
         ElementCompositionPreview::SetElementChildVisual(host, sprite);

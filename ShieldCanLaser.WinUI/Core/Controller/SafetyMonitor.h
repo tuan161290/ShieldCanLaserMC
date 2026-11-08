@@ -65,7 +65,7 @@ namespace scs
 
     private:
         void Abort(const std::string& reason);
-        bool ComputeSafeToMove(bool ioOk, bool emgOk, bool curtainOk, bool airOk);
+        bool ComputeSafeToMove(bool ioOk, bool emgOk, bool curtainOk);
         void SetBlockReason(const char* reason);
 
         MotionConnect& m_motion;

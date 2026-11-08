@@ -30,9 +30,6 @@ namespace
     {
         if (control.IsEnabled() != enabled) control.IsEnabled(enabled);
     }
-
-    /// <summary>Báo cáo của Core xuống dòng bằng "\r\n" (như bản C#); TextBlock chỉ cần "\n".</summary>
-    std::string NormalizeNewLines(const std::string& text) { return ::base::Replace(text, "\r\n", "\n"); }
 }
 
 namespace winrt::ShieldCanLaser::implementation
@@ -103,42 +100,20 @@ namespace winrt::ShieldCanLaser::implementation
         f.BindCheck(ZSafeInterlockCheck(), [] { return Sys()->ZSafeInterlock; }, [](bool v) { Sys()->ZSafeInterlock = v; });
         f.BindCheck(LightCurtainCheck(), [] { return Sys()->HasLightCurtain; }, [](bool v) { Sys()->HasLightCurtain = v; });
         f.BindCheck(TraySensorsCheck(), [] { return Sys()->HasTraySensors; }, [](bool v) { Sys()->HasTraySensors = v; });
-        f.BindCheck(AirSensorCheck(), [] { return Sys()->HasAirSensor; }, [](bool v) { Sys()->HasAirSensor = v; });
 
-        // ── Vision — tên Flow và biến (một camera, một Flow LocateCan) ──
+        // ── Vision — đường dẫn Flow.Group của bước kiểm tra, ảnh trang Main ──
         auto bindName = [&f](TextBox const& box, const char* label, std::string scs::VisionOutputNames::*member) {
             f.BindString(box, label,
                          [member] { return Sys()->VisionOutputs.*member; },
                          [member](std::string v) { Sys()->VisionOutputs.*member = std::move(v); });
         };
-        bindName(FlowLocateCanBox(), "Flow LocateCan", &scs::VisionOutputNames::FlowLocateCan);
-        bindName(OutFoundBox(), "Output Found", &scs::VisionOutputNames::OutFound);
+        bindName(InspectPathBox(), "Flow.Group", &scs::VisionOutputNames::InspectPath);
         bindName(OutImageBox(), "Output image", &scs::VisionOutputNames::OutImage);
         bindName(RenderCamBox(), "CAM frame", &scs::VisionOutputNames::RenderCam);
-        bindName(GlobalVarModuleBox(), "Module Global Variable", &scs::VisionOutputNames::GlobalVarModule);
-        bindName(GvAxisXBox(), "Axis X var (mm)", &scs::VisionOutputNames::GvAxisX);
-        bindName(GvAxisZBox(), "Axis Z var (mm)", &scs::VisionOutputNames::GvAxisZ);
-        bindName(GvNozzleBox(), "Nozzle var", &scs::VisionOutputNames::GvNozzle);
-        bindName(GvIsLocateBox(), "Branch var", &scs::VisionOutputNames::GvIsLocate);
 
-        // ── Bù ở trạm laser (PLAN-LASER.md §4.3) — ghi thẳng vào SystemData sống, Routine_Auto đọc ở lần khắc kế tiếp ──
-        f.BindDouble(GainXBox(), "Gain X", [] { return Sys()->LaserComp.GainX; }, [](double v) { Sys()->LaserComp.GainX = v; });
-        f.BindDouble(GainZBox(), "Gain Z", [] { return Sys()->LaserComp.GainZ; }, [](double v) { Sys()->LaserComp.GainZ = v; });
-        f.BindDouble(MaxCompBox(), "Max compensation (mm)", [] { return Sys()->LaserComp.MaxCompMm; }, [](double v) { Sys()->LaserComp.MaxCompMm = v; });
+        // ── Laser — ghi thẳng vào SystemData sống, lần khắc kế tiếp đọc ──
         f.BindInt(LaserPulseMinBox(), "Laser pulse minimum (ms)",
-                  [] { return Sys()->LaserComp.LaserPulseMinMs; }, [](int v) { Sys()->LaserComp.LaserPulseMinMs = v; }, 0, 60000);
-
-        // ── Lưới hiệu chuẩn X × Z (tâm lưới do trang Vision Edit lưu — chỉ hiện) ──
-        f.BindDouble(GridStepXBox(), "Grid step X (mm)", [] { return Sys()->VisionCalib.GridStepX; }, [](double v) { Sys()->VisionCalib.GridStepX = v; });
-        f.BindDouble(GridStepZBox(), "Grid step Z (mm)", [] { return Sys()->VisionCalib.GridStepZ; }, [](double v) { Sys()->VisionCalib.GridStepZ = v; });
-        f.BindInt(CalibNozzleBox(), "Calibration nozzle",
-                  [] { return Sys()->VisionCalib.CalibNozzle; }, [](int v) { Sys()->VisionCalib.CalibNozzle = v; }, 1, scs::VisionOutputNames::NozzleCount);
-        f.BindDouble(VerifyStepBox(), "Verify travel (mm)", [] { return Sys()->VisionCalib.VerifyStepMm; }, [](double v) { Sys()->VisionCalib.VerifyStepMm = v; });
-        f.BindDouble(ResidualTolBox(), "Verify tolerance (mm)", [] { return Sys()->VisionCalib.ResidualTolMm; }, [](double v) { Sys()->VisionCalib.ResidualTolMm = v; });
-        f.BindInt(ShotsPerPointBox(), "Images per measurement",
-                  [] { return Sys()->VisionCalib.ShotsPerPoint; }, [](int v) { Sys()->VisionCalib.ShotsPerPoint = v; }, 1, 100);
-        f.BindInt(CalibValidDaysBox(), "Calibration valid (days)",
-                  [] { return Sys()->CalibValidDays; }, [](int v) { Sys()->CalibValidDays = v; }, 0, 10000);
+                  [] { return Sys()->LaserPulseMinMs; }, [](int v) { Sys()->LaserPulseMinMs = v; }, 0, 60000);
     }
 
     // Bảng vị trí chờ / giới hạn mềm / offset gốc — 3 dòng, vừa bề ngang nên không cần cột cố định hay cuộn ngang. Ô ghi
@@ -212,10 +187,6 @@ namespace winrt::ShieldCanLaser::implementation
 
     void SettingPage::UpdateStaticInfo()
     {
-        const auto& c = Sys()->VisionCalib;
-        ui::SetText(GridCenterText(), c.CenterSet
-            ? std::format("Grid center (saved by SET CENTER on Vision Edit): X {:.3f}, Z {:.3f} mm", c.CenterX, c.CenterZ)
-            : std::string("Grid center not set yet — Vision Edit page, SET CENTER."));
         ui::SetText(DataRootText(), ::base::PathToU8(scs::AppPaths::Root()));
         ui::Show(FallbackRootText(), scs::AppPaths::UsingFallbackRoot());
         ui::Show(AlarmCatalogText(), !scs::AlarmCatalog::Loaded());
@@ -329,20 +300,12 @@ namespace winrt::ShieldCanLaser::implementation
 
     void SettingPage::UpdateCommandStates()
     {
-        SetEnabled(CheckGlobalVarsButton(), !m_visionBusy);
-        SetEnabled(CreateGlobalVarsButton(), !m_visionBusy);
-        SetEnabled(CheckFlowOutputsButton(), !m_visionBusy);
+        SetEnabled(CheckPathButton(), !m_visionBusy);
         // "Vision giả" chỉ có nghĩa khi đang chọn mô phỏng (giá trị vẫn giữ, chỉ mờ đi).
         SetEnabled(VisionSimCheck(), Sys()->SimulationMode);
     }
 
     // ══════════ Vision ══════════
-
-    void SettingPage::SetReport(TextBlock const& block, const std::string& text)
-    {
-        ui::SetText(block, NormalizeNewLines(text));
-        ui::Show(block == GlobalVarReportText() ? GlobalVarReportScroll() : FlowOutputReportScroll(), !text.empty());
-    }
 
     // UpdateSourceTrigger=PropertyChanged của bản WPF: ghi ngay vào SystemData (Nạp lại solution đọc từ đó).
     void SettingPage::OnSolutionPathChanged(WF::IInspectable const&, TextChangedEventArgs const&)
@@ -384,109 +347,23 @@ namespace winrt::ShieldCanLaser::implementation
         }
     }
 
-    void SettingPage::OnCheckGlobalVarsClick(WF::IInspectable const&, RoutedEventArgs const&) { RunGlobalVarSync(false); }
-
-    void SettingPage::OnCreateGlobalVarsClick(WF::IInspectable const&, RoutedEventArgs const&) { RunGlobalVarSync(true); }
-
-    /// <summary>Kiểm tra hoặc tạo biến toàn cục cho solution đang nạp. Tạo thì kiểm tra trước để hỏi xác nhận kèm số
-    /// biến sẽ tạo và file .solw sẽ bị lưu.</summary>
-    winrt::fire_and_forget SettingPage::RunGlobalVarSync(bool apply)
+    /// <summary>Tra Flow và Group của đường dẫn kiểm tra trong solution đang nạp — không chạy Flow. Ghi ô đang sửa trước để
+    /// tra đúng đường dẫn đang hiện.</summary>
+    winrt::fire_and_forget SettingPage::OnCheckPathClick(WF::IInspectable const&, RoutedEventArgs const&)
     {
         auto self = get_strong();
         if (m_visionBusy) co_return;
+        if (!CommitEdits(false, "Path not checked")) co_return;
         m_visionBusy = true;
         UpdateCommandStates();
-        SetReport(GlobalVarReportText(), apply ? "Checking before creating…" : "Checking…");
+        ui::SetText(CheckPathText(), "Checking…");
 
-        std::string text;
-        bool done = false;
-        if (apply)
-        {
-            scs::GlobalVarSyncReport dry;
-            std::string error;
-            co_await sp::Background([&dry, &error] {
-                try { dry = scs::McControl::SyncVisionGlobalVariables(false); }
-                catch (const std::exception& e) { error = e.what(); }
-            });
-
-            if (!error.empty())
-            {
-                text = "ERROR: " + error;
-                done = true;
-            }
-            else if (!dry.Error.empty())
-            {
-                text = dry.ToText();
-                done = true;
-            }
-            else
-            {
-                int missing = dry.Count(scs::EGlobalVarState::Missing);
-                if (missing == 0)
-                {
-                    text = "No missing variables.\n" + dry.ToText();
-                    done = true;
-                }
-                else
-                {
-                    bool yes = false;
-                    try
-                    {
-                        yes = co_await ui::Dialogs::ConfirmAsync(
-                            std::format("Create {} missing global variables in the loaded solution, then SAVE the solution:\n{}\n\n"
-                                        "Existing variables keep their value and type. Try on a copy of the .solw first. Continue?",
-                                        missing, Sys()->VisionSolutionPath),
-                            "Create Global Variables");
-                    }
-                    catch (...)
-                    {
-                        yes = false;
-                    }
-                    if (!yes)
-                    {
-                        text = "Cancelled — no variables created.";
-                        done = true;
-                    }
-                    else
-                    {
-                        SetReport(GlobalVarReportText(), std::format("Creating {} variables and saving solution…", missing));
-                    }
-                }
-            }
-        }
-
-        if (!done)
-        {
-            scs::GlobalVarSyncReport report;
-            std::string error;
-            co_await sp::Background([&report, &error, apply] {
-                try { report = scs::McControl::SyncVisionGlobalVariables(apply); }
-                catch (const std::exception& e) { error = e.what(); }
-            });
-            text = error.empty() ? report.ToText() : "ERROR: " + error;
-        }
-
-        SetReport(GlobalVarReportText(), text);
-        m_visionBusy = false;
-        UpdateCommandStates();
-    }
-
-    /// <summary>Đối chiếu Output Params của các Flow với hợp đồng. Chỉ đọc khai báo — không chạy Flow nào.</summary>
-    winrt::fire_and_forget SettingPage::OnCheckFlowOutputsClick(WF::IInspectable const&, RoutedEventArgs const&)
-    {
-        auto self = get_strong();
-        if (m_visionBusy) co_return;
-        m_visionBusy = true;
-        UpdateCommandStates();
-        SetReport(FlowOutputReportText(), "Reading Flow Output Params…");
-
-        scs::VmOutCheckReport report;
-        std::string error;
-        co_await sp::Background([&report, &error] {
-            try { report = scs::McControl::CheckVisionFlowOutputs(); }
-            catch (const std::exception& e) { error = e.what(); }
+        std::string why;
+        co_await sp::Background([&why] {
+            try { why = scs::McControl::CheckInspectionPath(); }
+            catch (const std::exception& e) { why = std::string("ERROR: ") + e.what(); }
         });
-        SetReport(FlowOutputReportText(), error.empty() ? report.ToText() : "ERROR: " + error);
+        ui::SetText(CheckPathText(), why.empty() ? "OK — Flow and Group found. Result is read on the first inspection." : why);
 
         m_visionBusy = false;
         UpdateCommandStates();

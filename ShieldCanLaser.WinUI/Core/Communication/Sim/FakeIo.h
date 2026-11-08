@@ -44,7 +44,7 @@ namespace scs
         /// <summary>Nhấn-nhả một nút: bit lên 1 trong đúng một vòng quét.</summary>
         void SimPress(int diBit);
 
-        /// <summary>Lật một DI giữ mức (EMG, khí, rèm, tray…).</summary>
+        /// <summary>Lật một DI giữ mức (EMG, rèm, tray…).</summary>
         void SimToggle(int diBit);
 
         void SimSet(int diBit, bool value);
@@ -53,8 +53,11 @@ namespace scs
         /// cảm biến bám theo van của nó — mô phỏng lần gắp nào cũng dính can.</summary>
         void SimSetPickFail(int nozzle, bool fail);
 
-        /// <summary>Số lần DO kích laser đã lên 1 — bài tự kiểm đếm số lần khắc.</summary>
-        int LaserPulseCount() const { return m_laserPulses.load(); }
+        /// <summary>Số lần một DO đã lên 1 — bài tự kiểm đếm số lần khắc, số lần thổi.</summary>
+        int DoRiseCount(int bit) const;
+
+        /// <summary>Số lần DO kích laser đã lên 1.</summary>
+        int LaserPulseCount() const { return DoRiseCount(IoMap::LaserStart); }
 
     private:
         std::array<bool, IoMap::DiCount> m_di{};
@@ -62,7 +65,7 @@ namespace scs
         std::array<bool, IoMap::DoCount> m_do{};
         std::set<int> m_pendingPress;
         std::array<bool, IoMap::NozzleCount + 1> m_pickFail{};
-        std::atomic<int> m_laserPulses{ 0 };
+        std::array<int, IoMap::DoCount> m_doRises{};
         mutable std::recursive_mutex m_lock;
         std::atomic<bool> m_connected{ false };
     };

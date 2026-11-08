@@ -40,27 +40,33 @@ namespace scs
 
         constexpr int Cols = Routine_Auto::NozzleCount;
 
-        /// <summary>Dựng sơ đồ từ số hàng đã chạy (mở app giữa chừng / vừa đổi kích thước tray): hàng đã xong = Skipped.</summary>
-        void TraysEnsure(int rows, const int* rowsDone, const bool* present)
+        /// <summary>Ô thuộc phạm vi chạy: chưa xong, và đang chọn ô thì phải là ô chọn.</summary>
+        bool InScope(const TrayCells& book, int cell, bool selecting)
+        {
+            return !book.IsDone(cell) && (!selecting || book.IsSelected(cell));
+        }
+
+        /// <summary>Dựng sơ đồ từ các ô đã chạy (mở app giữa chừng / vừa đổi kích thước tray): ô đã xong = Skipped.</summary>
+        void TraysEnsure(int rows, const RunningData& run)
         {
             std::lock_guard<std::mutex> l(s_viewMutex);
             const size_t size = (size_t)std::max(0, rows) * Cols;
             for (int t = 0; t < Routine_Auto::TrayCount; ++t)
             {
                 auto& view = s_trays.Trays[(size_t)t];
-                if (view.size() == size && (size == 0 || present[t] || view[0] == (int)ECellState::Empty)) continue;
-                view.assign(size, present[t] ? (int)ECellState::Loaded : (int)ECellState::Empty);
-                if (present[t])
-                    for (size_t i = 0; i < size && (int)(i / Cols) < rowsDone[t]; ++i) view[i] = (int)ECellState::Skipped;
+                if (view.size() == size) continue;
+                view.assign(size, (int)ECellState::Loaded);
+                for (size_t i = 0; i < size; ++i)
+                    if (run.Trays[(size_t)t].IsDone((int)i)) view[i] = (int)ECellState::Skipped;
             }
         }
 
-        void TraysFill(int rows, const bool* present)
+        void TraysFill(int rows)
         {
             std::lock_guard<std::mutex> l(s_viewMutex);
             const size_t size = (size_t)std::max(0, rows) * Cols;
             for (int t = 0; t < Routine_Auto::TrayCount; ++t)
-                s_trays.Trays[(size_t)t].assign(size, present[t] ? (int)ECellState::Loaded : (int)ECellState::Empty);
+                s_trays.Trays[(size_t)t].assign(size, (int)ECellState::Loaded);
         }
 
         void CellSet(int tray, int row, int col, ECellState state)
@@ -80,13 +86,12 @@ namespace scs
             s_nozzles[(size_t)k].Text = text;
         }
 
-        void NozzleDeviation(int k, bool has, double dx, double dz)
+        void NozzleResult(int k, bool has, double result)
         {
             std::lock_guard<std::mutex> l(s_viewMutex);
             if (k < 1 || k > Routine_Auto::NozzleCount) return;
-            s_nozzles[(size_t)k].HasDeviation = has;
-            s_nozzles[(size_t)k].Dx = dx;
-            s_nozzles[(size_t)k].Dz = dz;
+            s_nozzles[(size_t)k].HasResult = has;
+            s_nozzles[(size_t)k].Result = has ? result : 0;
         }
 
         void NozzlesClear()
@@ -138,8 +143,6 @@ namespace scs
     {
     }
 
-    double Routine_Auto::CurrentCycleSec() const { return m_cycleClock.Seconds(); }
-
     void Routine_Auto::HoldClock(bool hold)
     {
         if (hold) m_cycleClock.Stop();
@@ -163,21 +166,24 @@ namespace scs
 
         m_model = McDataManager::Model();
         m_cycleClock.Reset();
-        m_cycleDone = 0;
         SetStep(EAutoState::S00_Ready, "Auto running");
 
         try
         {
             if (!PrepareStart(ct)) return false;
+            auto run = McDataManager::RunData();
+            bool selecting = false;   // hàng vừa chạy là từ ô chọn; MarkDone bỏ chọn chúng, hết ô chọn là xong lượt chạy lẻ
             while (true)
             {
                 if (PauseRequested) return false;
+                if (selecting && !run->HasCellSelection()) return FinishSelection(ct);
                 int tray = 0, row = 0;
                 if (!NextRow(tray, row))
                 {
                     if (!WaitTrays(ct)) return false;
                     continue;
                 }
+                selecting = run->HasCellSelection();
                 if (!RunRow(tray, row, ct)) return false;
             }
         }
@@ -195,44 +201,100 @@ namespace scs
     bool Routine_Auto::PrepareStart(std::stop_token)
     {
         for (int k = 1; k <= NozzleCount; ++k)
+        {
             if (Io().GetDo(IoMap::DoVacuum(k)))
                 throw AutoAbort(std::format("Nozzle {} vacuum still ON (previous cycle interrupted) — remove can, turn vacuum OFF on Manual page, then restart", k));
+            if (Io().GetDo(IoMap::VacuumBlower(k)))
+                throw AutoAbort(std::format("Nozzle {} blower still ON — turn it OFF on Manual page, then restart", k));
+        }
 
         PickAt(0, 0);
-        CamAt(1);
         LaserAt(1);
+        if (m_model->Auto.UseVision)
+        {
+            // Kiểm tra không chạy được thì dừng ngay từ đầu — đừng khắc cả tray rồi mới đánh NG hết.
+            CamAt(1);
+            if (auto why = m_sys()->VisionOutputs.InspectPathProblem(); !why.empty())
+                throw AutoAbort("Vision: " + why + " — or turn off Use vision for this model");
+            auto vision = m_vision ? m_vision() : nullptr;
+            if (!vision || !vision->IsSolutionLoaded())
+                throw AutoAbort("Vision solution not loaded — load it on Setting page, or turn off Use vision for this model");
+        }
 
         auto run = McDataManager::RunData();
-        bool present[TrayCount];
-        for (int t = 0; t < TrayCount; ++t) present[t] = TrayPresent(t);
-        TraysEnsure(std::max(1, m_model->Auto.TrayRows), run->TrayRowsDone, present);
+        const int rows = std::max(1, m_model->Auto.TrayRows);
+        TraysEnsure(rows, *run);
         NozzlesClear();
+        // Model vừa giảm số hàng: ô chọn ngoài tray không còn trên sơ đồ, giữ lại thì không bao giờ xong.
+        for (auto& tray : run->Trays)
+            for (int c : tray.Selected())
+                if (c >= rows * Cols) tray.Toggle(c);
         return true;
     }
 
+    /// Hàng đầu tiên còn ô trong phạm vi chạy: đang chọn ô thì chỉ xét các ô chọn, không thì cả tray. Tray vắng thì bỏ qua —
+    /// trừ khi nó có ô chọn chưa chạy: dừng báo ngay, không âm thầm bỏ ô người vận hành đã chọn.
     bool Routine_Auto::NextRow(int& tray, int& row) const
     {
         auto run = McDataManager::RunData();
-        const int rows = std::max(1, m_model->Auto.TrayRows);
+        const int cells = std::max(1, m_model->Auto.TrayRows) * Cols;
+        const bool selecting = run->HasCellSelection();
+        bool found = false;
         for (int t = 0; t < TrayCount; ++t)
         {
-            if (!TrayPresent(t)) continue;
-            if (run->TrayRowsDone[t] < rows)
+            const bool present = TrayPresent(t);
+            const TrayCells& book = run->Trays[(size_t)t];
+            for (int i = 0; i < cells; ++i)
             {
-                tray = t;
-                row = std::max(0, run->TrayRowsDone[t]);
-                return true;
+                if (!InScope(book, i, selecting)) continue;
+                if (selecting && !present)
+                    throw AutoAbort(std::format("Tray {} has selected cells but is not detected ({}) — load it or clear the selection",
+                                                t + 1, IoMap::DiLabel(IoMap::TrayPresent(t + 1))));
+                if (present && !found)
+                {
+                    tray = t;
+                    row = i / Cols;
+                    found = true;
+                }
             }
         }
-        return false;
+        return found;
+    }
+
+    bool Routine_Auto::ToStandby(std::stop_token ct)
+    {
+        auto sys = m_sys();
+        if (!m_func.EnsureZSafe(ct)) return false;
+        return MoveAxes({ { AxisId::X, sys->GetAxis(AxisId::X)->StandbyPos }, { AxisId::Y, sys->GetAxis(AxisId::Y)->StandbyPos } }, ct);
+    }
+
+    /// Xong một chu kỳ của bảng Cycle Time: tray vừa hết ô, hết ô chọn, hoặc chờ thay tray lúc tray bị lấy ra giữa chừng.
+    void Routine_Auto::FinishCycle()
+    {
+        auto run = McDataManager::RunData();
+        if (run->CycleStartedAtMs == 0) return;
+        run->FinishCycle(RunningData::NowMs());
+        McDataManager::SaveRunningData();
+        Log(std::format("Cycle done: {} OK in {:.1f} s", run->LastCycleProducts, run->LastCycleSec));
+    }
+
+    /// Hết ô chọn: về vị trí chờ, kết thúc chu trình. Muốn chạy tiếp phải bấm RUN rồi START — bấm START theo thói quen ngay
+    /// sau lượt lẻ không được chạy cả phần còn lại của tray.
+    bool Routine_Auto::FinishSelection(std::stop_token ct)
+    {
+        FinishCycle();
+        if (!ToStandby(ct)) return false;
+        SetStep(EAutoState::S00_Ready, (m_lastRowText.empty() ? std::string() : m_lastRowText + " — ") +
+                                       "Selected cells done — press RUN, then START for the next cells");
+        Log("Selected cells done");
+        return true;
     }
 
     /// Hết hàng của cả hai tray (hoặc không có tray): về vị trí chờ, chờ người vận hành thay tray và bấm START.
     bool Routine_Auto::WaitTrays(std::stop_token ct)
     {
-        auto sys = m_sys();
-        if (!m_func.EnsureZSafe(ct)) return false;
-        if (!MoveAxes({ { AxisId::X, sys->GetAxis(AxisId::X)->StandbyPos }, { AxisId::Y, sys->GetAxis(AxisId::Y)->StandbyPos } }, ct)) return false;
+        FinishCycle();
+        if (!ToStandby(ct)) return false;
 
         std::string text = (m_lastRowText.empty() ? std::string() : m_lastRowText + " — ") +
                            "Trays done — replace trays, then press START";
@@ -251,20 +313,18 @@ namespace scs
                 for (int t = 0; t < TrayCount; ++t) any = any || TrayPresent(t);
                 if (!any)
                 {
-                    m_status.SetMessage("START rejected: no tray detected (X005/X006)");
+                    m_status.SetMessage(std::format("START rejected: no tray detected ({}/{})", IoMap::DiLabel(IoMap::TrayPresent(1)), IoMap::DiLabel(IoMap::TrayPresent(2))));
                 }
                 else
                 {
                     auto run = McDataManager::RunData();
                     run->ResetTrays();
                     McDataManager::SaveRunningData();
-                    bool present[TrayCount];
-                    for (int t = 0; t < TrayCount; ++t) present[t] = TrayPresent(t);
-                    TraysFill(std::max(1, m_model->Auto.TrayRows), present);
+                    TraysFill(std::max(1, m_model->Auto.TrayRows));
                     m_lastRowText.clear();
                     WaitingTray = false;
                     LeaveWait();
-                    Log("Trays replaced — starting from row 1");
+                    Log(run->HasCellSelection() ? "Trays replaced — running selected cells" : "Trays replaced — starting from row 1");
                     return true;
                 }
             }
@@ -280,10 +340,15 @@ namespace scs
         r.Tray = tray;
         r.Index = row;
         r.Result.fill((int)ECellState::Empty);
+        {
+            auto run = McDataManager::RunData();
+            const bool selecting = run->HasCellSelection();
+            for (int k = 1; k <= NozzleCount; ++k) r.Active[k] = InScope(run->Trays[(size_t)tray], row * Cols + k - 1, selecting);
+            run->StartCycleClock(RunningData::NowMs());
+        }
         m_cycleClock.Restart();
-        m_cycleDone = 0;
-        Log(std::format("Row start: tray {} row {}", tray + 1, row + 1));
-        for (int c = 0; c < Cols; ++c) CellSet(tray, row, c, ECellState::Processing);
+        Log(std::format("Row start: tray {} row {} ({} cells)", tray + 1, row + 1, std::count(r.Active.begin(), r.Active.end(), true)));
+        for (int k = 1; k <= NozzleCount; ++k) if (r.Active[k]) CellSet(tray, row, k - 1, ECellState::Processing);
 
         if (!PickRow(r, ct)) return false;
         if (PauseRequested)
@@ -292,27 +357,21 @@ namespace scs
             // lần START sau chạy lại chính hàng này.
             Log("Stop requested after pick — returning row to tray, row will be rerun", LogLevel::Warning);
             if (!PlaceRow(r, ct)) return false;
-            for (int c = 0; c < Cols; ++c) CellSet(tray, row, c, ECellState::Loaded);
+            for (int k = 1; k <= NozzleCount; ++k) if (r.Active[k]) CellSet(tray, row, k - 1, ECellState::Loaded);
             NozzlesClear();
             return false;
         }
-        if (!Vision(r, ct)) return false;
-        if (PauseRequested)
-        {
-            Log("Stop requested after vision — returning row to tray, row will be rerun", LogLevel::Warning);
-            if (!PlaceRow(r, ct)) return false;
-            for (int c = 0; c < Cols; ++c) CellSet(tray, row, c, ECellState::Loaded);
-            NozzlesClear();
-            return false;
-        }
+        // Từ đây can đã khắc: STOP chỉ có hiệu lực sau khi kiểm tra và trả hàng (khắc lại là khắc đè).
         if (!Laser(r, ct)) return false;
+        if (!Inspect(r, ct)) return false;
         if (!PlaceRow(r, ct)) return false;
         m_cycleClock.Stop();
         Finish(r);
         return !PauseRequested;
     }
 
-    /// Gắp cả hàng: Y tới hàng, X/Z tới điểm gắp, Z hạ hai chặng, 7 van bật, chờ, Z nâng, đọc 7 cảm biến chân không.
+    /// Gắp hàng: Y tới hàng, X/Z tới điểm gắp, Z hạ hai chặng, van của các ô trong phạm vi bật, chờ, Z nâng, đọc cảm biến chân
+    /// không của các ô đó. Nozzle ngoài phạm vi vẫn hạ theo (Z chung), không bật van, không tính hút hụt.
     bool Routine_Auto::PickRow(Row& r, std::stop_token ct)
     {
         SetStep(EAutoState::S20_PickRow, std::format("Picking row {} of tray {}", r.Index + 1, r.Tray + 1));
@@ -324,20 +383,22 @@ namespace scs
         if (!MoveAxes({ { AxisId::X, x }, { AxisId::Y, y } }, ct)) return false;
         if (!m_func.MoveZDown(AxisId::Z, z, z - ap.PickSlowLength, ct)) return false;
 
-        for (int k = 1; k <= NozzleCount; ++k) Io().SetDo(IoMap::DoVacuum(k), true);
+        for (int k = 1; k <= NozzleCount; ++k) if (r.Active[k]) Io().SetDo(IoMap::DoVacuum(k), true);
         base::Delay(ap.VacuumOnMs, ct);
         if (!m_func.EnsureZSafe(ct)) return false;
 
         base::Stopwatch sw;
         auto allUp = [&] {
-            for (int k = 1; k <= NozzleCount; ++k) if (!Io().GetDi(IoMap::VacuumSensor(k))) return false;
+            for (int k = 1; k <= NozzleCount; ++k) if (r.Active[k] && !Io().GetDi(IoMap::VacuumSensor(k))) return false;
             return true;
         };
         while (!allUp() && sw.ElapsedMilliseconds() < VacuumSensorWaitMs) base::Delay(10, ct);
 
-        int missed = 0;
+        int active = 0, missed = 0;
         for (int k = 1; k <= NozzleCount; ++k)
         {
+            if (!r.Active[k]) continue;
+            ++active;
             r.Holding[k] = Io().GetDi(IoMap::VacuumSensor(k));
             if (r.Holding[k])
             {
@@ -356,23 +417,58 @@ namespace scs
         if (missed > 0)
             AlarmManager::RaiseEvent(AlarmCode::PickFailed, "Auto",
                 std::format("{} nozzle(s) missed on tray {} row {} — cells set NG", missed, r.Tray + 1, r.Index + 1));
-        if (missed == NozzleCount)
-            Log(std::format("Row {} of tray {}: no can picked — empty row?", r.Index + 1, r.Tray + 1), LogLevel::Warning);
+        if (missed == active)
+            Log(std::format("Row {} of tray {}: no can picked — empty cells?", r.Index + 1, r.Tray + 1), LogLevel::Warning);
         return true;
     }
 
-    /// Soi từng nozzle đang giữ can: X/Z tới điểm CAM(k), chờ ổn định, Flow LocateCan. Vision tắt → bỏ qua, độ lệch 0.
-    bool Routine_Auto::Vision(Row& r, std::stop_token ct)
+    /// Khắc từng nozzle đang giữ can: X/Z tới điểm Laser(k) + Trim, DO kích, chờ MarkTimeMs. Không bù độ lệch can.
+    bool Routine_Auto::Laser(Row& r, std::stop_token ct)
     {
-        if (!m_model->Auto.UseVision) return true;
-        SetStep(EAutoState::S30_Vision, "CAM inspecting each nozzle");
+        SetStep(EAutoState::S30_Laser, "Laser marking each nozzle");
+        for (int k = 1; k <= NozzleCount; ++k)
+        {
+            if (!r.Holding[k] || r.Result[k] == (int)ECellState::Ng) continue;
+            auto p = LaserAt(k);
+            const auto& trim = m_model->Trim.Nozzle(k);
+            const double x = Coord(*p, AxisId::X) + trim.X, z = Coord(*p, AxisId::Z) + trim.Z;
 
-        Io().SetDo(IoMap::DoCamLight, true);
-        struct LightOff { IIoDevice& io; ~LightOff() { io.SetDo(IoMap::DoCamLight, false); } } lightOff{ Io() };
+            NozzleSet(k, ECellState::Processing, std::format("marking at X {:.3f}, Z {:.3f}", x, z));
+            if (!m_func.EnsureZSafe(ct)) return false;
+            if (!MoveAxes({ { AxisId::X, x } }, ct)) return false;
+            if (!MoveZTo(z, ct)) return false;
+            m_func.WaitSettle(ct);
+            Log(std::format("Nozzle {}: mark at X {:.3f}, Z {:.3f}{}", k, x, z, m_model->Auto.UseLaser ? "" : " (dry run, laser off)"));
+            if (m_model->Auto.UseLaser) Mark(ct);
+            r.Marked[k] = true;
+            NozzleSet(k, ECellState::Loaded, "marked");
+        }
+        return true;
+    }
+
+    /// Kiểm tra từng can vừa khắc: X/Z tới điểm CAM(k), chờ ổn định, chạy Flow, đọc Result của Group. Result = 1 → OK,
+    /// khác 1 → NG. Không đọc được (Flow lỗi, quá giờ, thiếu Result) → NG kèm cảnh báo 5006. Vision tắt → can đã khắc là OK.
+    bool Routine_Auto::Inspect(Row& r, std::stop_token ct)
+    {
+        if (!m_model->Auto.UseVision)
+        {
+            for (int k = 1; k <= NozzleCount; ++k)
+            {
+                if (!r.Marked[k]) continue;
+                r.Result[k] = (int)ECellState::Ok;
+                NozzleSet(k, ECellState::Ok, "marked (vision off)");
+            }
+            return true;
+        }
+        if (std::none_of(r.Marked.begin(), r.Marked.end(), [](bool m) { return m; })) return true;
+        SetStep(EAutoState::S40_Inspect, "CAM inspecting each marked can");
+
+        Io().SetDo(IoMap::DoLightCam, true);
+        struct LightOff { IIoDevice& io; ~LightOff() { io.SetDo(IoMap::DoLightCam, false); } } lightOff{ Io() };
         bool first = true;
         for (int k = 1; k <= NozzleCount; ++k)
         {
-            if (!r.Holding[k]) continue;
+            if (!r.Marked[k]) continue;
             NozzleSet(k, ECellState::Processing, "inspecting");
             auto p = CamAt(k);
             if (!m_func.EnsureZSafe(ct)) return false;
@@ -381,65 +477,24 @@ namespace scs
             m_func.WaitSettle(ct);
             if (first) { base::Delay(m_sys()->LampSettleMs, ct); first = false; }
 
-            std::string error;
-            r.Seen[k] = Measure(k, r.RelX[k], r.RelZ[k], error, ct);
-            if (!r.Seen[k])
+            auto read = InspectHere(k, ct);
+            NozzleResult(k, read.HasResult, read.Result);
+            if (read.Pass)
             {
-                r.Result[k] = (int)ECellState::Ng;
-                CellSet(r.Tray, r.Index, k - 1, ECellState::Ng);
-                NozzleSet(k, ECellState::Ng, "vision: " + error);
-                NozzleDeviation(k, false, 0, 0);
-                AlarmManager::RaiseEvent(AlarmCode::VisionNg, "Auto", std::format("nozzle {}: {}", k, error));
-                Log(std::format("CAM measure failed, nozzle {}: {}", k, error), LogLevel::Warning);
-            }
-            else
-            {
-                const auto& nc = m_model->Calib.Nozzle(k);
-                NozzleDeviation(k, true, r.RelX[k] - nc.RefX, r.RelZ[k] - nc.RefZ);
-                NozzleSet(k, ECellState::Loaded, std::format("dX {:+.3f}, dZ {:+.3f}", r.RelX[k] - nc.RefX, r.RelZ[k] - nc.RefZ));
-            }
-        }
-        return true;
-    }
-
-    /// Khắc từng nozzle còn OK: X/Z tới điểm Laser(k) + Trim + bù, DO kích, chờ MarkTimeMs. Độ lệch vượt ngưỡng → ô NG.
-    bool Routine_Auto::Laser(Row& r, std::stop_token ct)
-    {
-        SetStep(EAutoState::S40_Laser, "Laser marking each nozzle");
-        auto sys = m_sys();
-        const bool useVision = m_model->Auto.UseVision;
-        for (int k = 1; k <= NozzleCount; ++k)
-        {
-            if (!r.Holding[k] || r.Result[k] == (int)ECellState::Ng) continue;
-            auto p = LaserAt(k);
-            double baseX = Coord(*p, AxisId::X), baseZ = Coord(*p, AxisId::Z);
-            auto dev = VmCycle::Deviation(m_model->Calib.Nozzle(k), useVision ? r.RelX[k] : 0.0, useVision ? r.RelZ[k] : 0.0,
-                                          sys->LaserComp, baseX, baseZ, useVision && r.Seen[k]);
-            if (!dev.Ok)
-            {
-                r.Result[k] = (int)ECellState::Ng;
-                CellSet(r.Tray, r.Index, k - 1, ECellState::Ng);
-                NozzleSet(k, ECellState::Ng, dev.Why);
-                AlarmManager::RaiseEvent(AlarmCode::CompensationOutOfRange, "Auto", std::format("nozzle {}: {}", k, dev.Why));
-                Log(std::format("Nozzle {} not marked: {}", k, dev.Why), LogLevel::Warning);
+                r.Result[k] = (int)ECellState::Ok;
+                NozzleSet(k, ECellState::Ok, "inspected OK");
                 continue;
             }
-
-            NozzleSet(k, ECellState::Processing, std::format("marking at X {:.3f}, Z {:.3f}", dev.TargetX, dev.TargetZ));
-            if (!m_func.EnsureZSafe(ct)) return false;
-            if (!MoveAxes({ { AxisId::X, dev.TargetX } }, ct)) return false;
-            if (!MoveZTo(dev.TargetZ, ct)) return false;
-            m_func.WaitSettle(ct);
-            Log(std::format("Nozzle {}: mark at X {:.3f}, Z {:.3f} (dX {:+.3f}, dZ {:+.3f})", k, dev.TargetX, dev.TargetZ, dev.Dx, dev.Dz));
-            if (m_model->Auto.UseLaser) Mark(ct);
-            r.Result[k] = (int)ECellState::Ok;
-            NozzleSet(k, ECellState::Ok, "marked");
-            m_cycleDone = m_cycleDone + 1;
+            r.Result[k] = (int)ECellState::Ng;
+            CellSet(r.Tray, r.Index, k - 1, ECellState::Ng);
+            NozzleSet(k, ECellState::Ng, read.CallOk && read.HasResult ? std::string("inspected NG") : "vision: " + read.Describe());
+            if (!read.CallOk || !read.HasResult)
+                AlarmManager::RaiseEvent(AlarmCode::VisionNg, "Auto", std::format("nozzle {}: {}", k, read.Describe()));
         }
         return true;
     }
 
-    /// Trả cả hàng về đúng ô: Y/X/Z tới điểm gắp, Z hạ, 7 van tắt, chờ, Z nâng.
+    /// Trả can về đúng ô: Y/X/Z tới điểm gắp, Z hạ, van tắt, chờ, Z nâng.
     bool Routine_Auto::PlaceRow(Row& r, std::stop_token ct)
     {
         SetStep(EAutoState::S50_PlaceRow, std::format("Returning row {} to tray {}", r.Index + 1, r.Tray + 1));
@@ -451,7 +506,17 @@ namespace scs
         if (!MoveAxes({ { AxisId::X, x }, { AxisId::Y, y } }, ct)) return false;
         if (!m_func.MoveZDown(AxisId::Z, z, z - ap.PickSlowLength, ct)) return false;
         for (int k = 1; k <= NozzleCount; ++k) Io().SetDo(IoMap::DoVacuum(k), false);
-        base::Delay(ap.VacuumOffMs, ct);
+        {
+            // Thổi nhả can trong suốt VacuumOffMs, tắt trước khi Z nâng. Chỉ nozzle đang giữ can: nozzle hút hụt mà thổi
+            // thì hất văng can còn nằm trong ô.
+            struct BlowOff
+            {
+                IIoDevice& io;
+                ~BlowOff() { for (int k = 1; k <= IoMap::NozzleCount; ++k) io.SetDo(IoMap::VacuumBlower(k), false); }
+            } blowOff{ Io() };
+            for (int k = 1; k <= NozzleCount; ++k) if (r.Holding[k]) Io().SetDo(IoMap::VacuumBlower(k), true);
+            base::Delay(ap.VacuumOffMs, ct);
+        }
         if (!m_func.EnsureZSafe(ct)) return false;
 
         for (int k = 1; k <= NozzleCount; ++k)
@@ -466,17 +531,18 @@ namespace scs
 
     void Routine_Auto::Finish(const Row& r)
     {
+        auto run = McDataManager::RunData();
         int ok = 0, ng = 0;
         std::vector<int> result;
         for (int k = 1; k <= NozzleCount; ++k)
         {
             result.push_back(r.Result[k]);
+            if (!r.Active[k]) continue;
             if (r.Result[k] == (int)ECellState::Ok) ++ok;
             else ++ng;
+            run->Trays[(size_t)r.Tray].MarkDone(r.Index * Cols + k - 1);
         }
 
-        auto run = McDataManager::RunData();
-        run->TrayRowsDone[r.Tray] = std::max(run->TrayRowsDone[r.Tray], r.Index + 1);
         run->LastRowResult = result;
         run->LastRowTray = r.Tray + 1;
         run->LastRowIndex = r.Index + 1;
@@ -484,11 +550,12 @@ namespace scs
         run->CountNg += ng;
         run->CountTotal += ok + ng;
         run->ConsecutiveNg = ng > 0 ? run->ConsecutiveNg + ng : 0;
+        run->CycleOk += ok;
+        const int cells = std::max(1, m_model->Auto.TrayRows) * Cols;
+        if (run->Trays[(size_t)r.Tray].DoneCount(cells) >= cells) FinishCycle();
         const double sec = m_cycleClock.Seconds();
-        run->RecordCycle(sec, ok + ng);
         McDataManager::SaveRunningData();
         m_cycleClock.Reset();
-        m_cycleDone = 0;
 
         m_lastRowText = std::format("Tray {} row {} done: {} OK, {} NG ({:.1f} s)", r.Tray + 1, r.Index + 1, ok, ng, sec);
         m_status.SetMessage(m_lastRowText);
@@ -497,39 +564,24 @@ namespace scs
 
     // ───────────────────────── vision / laser ─────────────────────────
 
-    bool Routine_Auto::Measure(int nozzle, double& relX, double& relZ, std::string& error, std::stop_token ct)
+    VmInspectRead Routine_Auto::InspectHere(int nozzle, std::stop_token ct)
     {
+        VmInspectRead read;
         auto vision = m_vision ? m_vision() : nullptr;
-        if (!vision) { error = "vision device not available"; return false; }
-        auto sys = m_sys();
-        const auto& names = sys->VisionOutputs;
-        error = VmCycle::AxisVarProblem(&names);
-        if (!error.empty()) return false;
-
-        auto g = VmCycle::AxisGlobals(&m_motion, names, VmRunIds::Next(), nozzle);
-        auto req = VmCycle::LocateRequest(names, g);
-        auto r = vision->CallFlow(req, ct);
-        auto read = VmCycle::ReadLocate(r, g, names);
-        if (!read.CallOk) { error = read.CallError; return false; }
-        if (!read.EchoOk) { error = read.EchoIssue; return false; }
-        if (!read.Found) { error = "can not found"; return false; }
-        if (!read.VmValid) { error = read.VmIssue; return false; }
-        relX = read.RelX;
-        relZ = read.RelZ;
-        Log(std::format("LocateCan N{} RunId {}: axis X {:.3f}, Z {:.3f} → Obj ({:.3f}, {:.3f}), Rel ({:+.3f}, {:+.3f})",
-                        nozzle, VmCycle::Fmt(VmCycle::Val(g, VmVars::RunId)), read.AxX, read.AxZ, read.X, read.Y, relX, relZ));
-        return true;
+        const auto& names = m_sys()->VisionOutputs;
+        if (!vision) read.CallError = "vision device not available";
+        else if (auto why = names.InspectPathProblem(); !why.empty()) read.CallError = why;
+        else read = VmCycle::ReadInspect(vision->CallFlow(VmCycle::InspectRequest(names, nozzle), ct));
+        Log(std::format("Inspect N{} ({}): {}", nozzle, names.InspectPath, read.Describe()), read.Pass ? LogLevel::Info : LogLevel::Warning);
+        return read;
     }
 
     void Routine_Auto::Mark(std::stop_token ct)
     {
         auto sys = m_sys();
-        int hold = std::max(m_model->Auto.MarkTimeMs, sys->LaserComp.LaserPulseMinMs);
-        IIoDevice& io = Io();
-        io.SetDo(IoMap::DoLaserTrigger, true);
-        struct Off { IIoDevice& io; ~Off() { io.SetDo(IoMap::DoLaserTrigger, false); } } off{ io };
+        int hold = std::max(m_model->Auto.MarkTimeMs, sys->LaserPulseMinMs);
         // Lệnh khắc không bị cắt ngang bởi STOP (bit RUN) — chỉ EMG/alarm (ct) mới cắt.
-        base::Delay(hold, ct);
+        m_func.LaserPulse(hold, ct);
     }
 
     // ───────────────────────── tiện ích ─────────────────────────
@@ -631,6 +683,12 @@ namespace scs
         return *io;
     }
 
+    void Routine_Auto::ClearTrayView()
+    {
+        std::lock_guard<std::mutex> l(s_viewMutex);
+        s_trays = {};
+    }
+
     Routine_Auto::TrayView Routine_Auto::Trays()
     {
         std::lock_guard<std::mutex> l(s_viewMutex);
@@ -647,13 +705,13 @@ namespace scs
     {
         auto run = McDataManager::RunData();
         auto model = McDataManager::Model();
-        int rows = model ? std::max(0, model->Auto.TrayRows) : 0;
-        std::string s = std::format("Tray 1: {}/{} rows · Tray 2: {}/{} rows done", run->TrayRowsDone[0], rows, run->TrayRowsDone[1], rows);
+        int cells = model ? std::max(0, model->Auto.TrayRows) * Cols : 0;
+        std::string s = std::format("Tray 1: {}/{} cells · Tray 2: {}/{} cells done", run->Trays[0].DoneCount(cells), cells, run->Trays[1].DoneCount(cells), cells);
         if (!run->LastRowResult.empty())
         {
             s += std::format("\nLast row (tray {} row {}):", run->LastRowTray, run->LastRowIndex);
             for (size_t i = 0; i < run->LastRowResult.size(); ++i)
-                s += std::format(" N{}·{}", i + 1, run->LastRowResult[i] == (int)ECellState::Ok ? "OK" : "NG");
+                s += std::format(" N{}·{}", i + 1, run->LastRowResult[i] == (int)ECellState::Ok ? "OK" : run->LastRowResult[i] == (int)ECellState::Ng ? "NG" : "—");
         }
         return s;
     }

@@ -28,6 +28,10 @@ namespace winrt::ShieldCanLaser::implementation
         {
             m_acrylic = DesktopAcrylicController();
             m_acrylic.Kind(DesktopAcrylicKind::Thin);
+            // Phủ 80 %: chữ dễ đọc, hình nền và cửa sổ phía sau chỉ còn ảnh hưởng nhẹ.
+            m_acrylic.TintColor(Windows::UI::Color{ 255, 0xF3, 0xF3, 0xF3 });
+            m_acrylic.TintOpacity(0.8f);
+            m_acrylic.LuminosityOpacity(0.8f);
             m_acrylic.AddSystemBackdropTarget(target);
             m_acrylic.SetSystemBackdropConfiguration(m_config);
         }

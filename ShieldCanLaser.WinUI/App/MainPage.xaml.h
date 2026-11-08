@@ -1,4 +1,4 @@
-#pragma once
+﻿#pragma once
 #include "MainPage.g.h"
 
 #include <array>
@@ -21,9 +21,10 @@ namespace scs { class VisionMasterDevice; }
 namespace winrt::ShieldCanLaser::implementation
 {
     /// <summary>
-    /// Trang Main — máy Laser Marking: nút vận hành (AUTO/MANUAL, RUN, STOP, Về gốc, Init, RESET, Tắt còi), sản lượng +
-    /// cycle time, tiến độ 2 tray (RESET TRAY), sơ đồ 2 tray TrayRows × 7 ô, trạng thái 7 nozzle (độ lệch đo ở CAM), một khung
-    /// ảnh CAM và nhật ký trực tiếp. Không binding: mọi thứ đọc từ Core trong OnTick().
+    /// Trang Main — máy Laser Marking: công tắc AUTO/MANUAL, nút vận hành (RUN, STOP, Về gốc, Init, RESET, Tắt còi), sản lượng +
+    /// cycle time, tiến độ 2 tray (RESET TRAY), sơ đồ 2 tray TrayRows × 7 ô (AUTO: chạm một ô = chọn ô đó để chạy lẻ),
+    /// trạng thái 7 nozzle (độ lệch đo ở CAM), một khung ảnh CAM và nhật ký trực tiếp (mặc định ẩn). Không binding: mọi thứ đọc từ Core
+    /// trong OnTick().
     ///
     /// <para>Khung ảnh CAM: ảnh Bitmap chụp gần nhất của Vision (đổi sang WriteableBitmap khi Vision thay ảnh mới) và — chỉ
     /// khi vision là VisionMaster thật (cả lúc mô phỏng trục/IO), không chụp ảnh — một VmRenderControl của VisionMaster đặt
@@ -34,8 +35,11 @@ namespace winrt::ShieldCanLaser::implementation
         MainPage() = default;
 
         void OnRootLoaded(Windows::Foundation::IInspectable const&, Microsoft::UI::Xaml::RoutedEventArgs const&);
-        void OnAutoClick(Windows::Foundation::IInspectable const&, Microsoft::UI::Xaml::RoutedEventArgs const&);
-        void OnManualClick(Windows::Foundation::IInspectable const&, Microsoft::UI::Xaml::RoutedEventArgs const&);
+        void OnModeSwitchTapped(Windows::Foundation::IInspectable const&, Microsoft::UI::Xaml::Input::TappedRoutedEventArgs const&);
+        void OnModeSwitchPointerEntered(Windows::Foundation::IInspectable const&, Microsoft::UI::Xaml::Input::PointerRoutedEventArgs const&);
+        void OnModeSwitchPointerExited(Windows::Foundation::IInspectable const&, Microsoft::UI::Xaml::Input::PointerRoutedEventArgs const&);
+        void OnModeSwitchPointerPressed(Windows::Foundation::IInspectable const&, Microsoft::UI::Xaml::Input::PointerRoutedEventArgs const&);
+        void OnModeSwitchPointerReleased(Windows::Foundation::IInspectable const&, Microsoft::UI::Xaml::Input::PointerRoutedEventArgs const&);
         void OnRunClick(Windows::Foundation::IInspectable const&, Microsoft::UI::Xaml::RoutedEventArgs const&);
         void OnStopClick(Windows::Foundation::IInspectable const&, Microsoft::UI::Xaml::RoutedEventArgs const&);
         void OnOriginClick(Windows::Foundation::IInspectable const&, Microsoft::UI::Xaml::RoutedEventArgs const&);
@@ -44,7 +48,9 @@ namespace winrt::ShieldCanLaser::implementation
         void OnMuteClick(Windows::Foundation::IInspectable const&, Microsoft::UI::Xaml::RoutedEventArgs const&);
         void OnClearCountersClick(Windows::Foundation::IInspectable const&, Microsoft::UI::Xaml::RoutedEventArgs const&);
         void OnResetTrayClick(Windows::Foundation::IInspectable const&, Microsoft::UI::Xaml::RoutedEventArgs const&);
+        void OnClearCellsClick(Windows::Foundation::IInspectable const&, Microsoft::UI::Xaml::RoutedEventArgs const&);
         void OnCamToolbarClick(Windows::Foundation::IInspectable const& sender, Microsoft::UI::Xaml::RoutedEventArgs const&);
+        void OnLogToggleClick(Windows::Foundation::IInspectable const&, Microsoft::UI::Xaml::RoutedEventArgs const&);
 
         void OnTick() override;
         void OnShown(bool visible) override;
@@ -56,13 +62,36 @@ namespace winrt::ShieldCanLaser::implementation
         static constexpr int NozzleCount = scs::IoMap::NozzleCount;
         static constexpr int TrayCount = scs::IoMap::TrayCount;
 
-        /// <summary>Một sơ đồ tray: lưới ô Border dựng lại khi số ô / số cột đổi, tô màu theo ECellState mỗi nhịp.</summary>
+        /// <summary>Một ô sơ đồ tray: nền màu ECellState + viền chọn 2 px đè lên (như ô tray ShieldCanAssy).</summary>
+        struct TrayCell
+        {
+            Microsoft::UI::Xaml::Controls::Grid Root{ nullptr };
+            Microsoft::UI::Xaml::Controls::Border Fill{ nullptr };
+            Microsoft::UI::Xaml::Controls::Border Selection{ nullptr };
+            Windows::Foundation::Rect Bounds{};   // trong Host, chụp lúc nhấn (layout không đổi lúc kéo)
+            bool Selectable{ false };             // McControl::CanSelectCell, chụp lúc nhấn
+            int ShownState{ -1 };   // ECellState đang tô; -1 = chưa tô
+            int ShownDim{ -1 };     // đang mờ (ngoài phạm vi chạy lẻ) = 1; -1 = chưa đặt
+        };
+
+        /// <summary>Một sơ đồ tray: lưới ô dựng lại khi số ô / số cột đổi, tô màu theo ECellState mỗi nhịp.</summary>
         struct TrayMap
         {
             Microsoft::UI::Xaml::Controls::Grid Host{ nullptr };
-            std::vector<Microsoft::UI::Xaml::Controls::Border> Cells;
-            std::vector<int> Shown;   // ECellState đang tô; -1 = chưa tô
+            std::vector<TrayCell> Cells;
+            int Tray{ 0 };   // 0-based
             int Cols{ -1 };
+        };
+
+        /// <summary>Kéo chọn đang dở: ô nhấn xuống, ô đang kéo tới (cùng tray).</summary>
+        struct CellDrag
+        {
+            bool Active{ false };
+            uint32_t PointerId{ 0 };
+            int Tray{ 0 };
+            int Anchor{ 0 };
+            int End{ 0 };
+            bool Add{ false };   // ô bắt đầu chưa chọn → kéo là chọn
         };
 
         /// <summary>Một hàng của dải nozzle: ô màu trạng thái + chữ trạng thái + độ lệch.</summary>
@@ -70,7 +99,7 @@ namespace winrt::ShieldCanLaser::implementation
         {
             Microsoft::UI::Xaml::Controls::Border Cell{ nullptr };
             Microsoft::UI::Xaml::Controls::TextBlock Text{ nullptr };
-            Microsoft::UI::Xaml::Controls::TextBlock Dev{ nullptr };
+            Microsoft::UI::Xaml::Controls::TextBlock ResultText{ nullptr };
             int Shown{ -1 };   // ECellState đang tô
         };
 
@@ -103,14 +132,26 @@ namespace winrt::ShieldCanLaser::implementation
 
         void BuildTrayLegend();
         void BuildNozzleStrip();
-        /// <summary>Sơ đồ 2 tray: lấy Routine_Auto::Trays(), thiếu / sai kích thước thì suy từ RunningData.TrayRowsDone.</summary>
+        /// <summary>Sơ đồ 2 tray: lấy Routine_Auto::Trays(), thiếu / sai kích thước thì suy từ RunningData.Trays. Cả ô chọn
+        /// chạy lẻ, nút Clear (n).</summary>
         void UpdateTrays();
         /// <summary>Dải 7 nozzle: Routine_Auto::Nozzles().</summary>
         void UpdateNozzles();
         /// <summary>Dựng lưới <paramref name="count"/> ô, <paramref name="cols"/> cột, cột giãn kín bề ngang khung;
-        /// <paramref name="cellHeight"/> = 0 thì hàng cũng giãn kín chiều cao. <paramref name="labels"/>: ghi số thứ tự trong ô.</summary>
+        /// <paramref name="cellHeight"/> = 0 thì hàng cũng giãn kín chiều cao. <paramref name="labels"/>: ghi "hàng-cột" trong ô.</summary>
         void LayoutMap(TrayMap& map, int count, int cols, double cellHeight, bool labels);
-        void PaintMap(TrayMap& map, std::vector<int> const& states);
+        /// <summary><paramref name="selected"/> tăng dần; <paramref name="anySelected"/>: có ô chọn ở BẤT KỲ tray nào — ô không
+        /// chọn mờ đi, kể cả tray kia, vì tray kia cũng không chạy.</summary>
+        void PaintMap(TrayMap& map, std::vector<int> const& states, std::vector<int> const& selected, bool anySelected);
+        void HookTrayMap(int tray);
+        void OnMapPressed(int tray, Microsoft::UI::Xaml::Input::PointerRoutedEventArgs const& e);
+        void OnMapMoved(int tray, Microsoft::UI::Xaml::Input::PointerRoutedEventArgs const& e);
+        void OnMapReleased(int tray, Microsoft::UI::Xaml::Input::PointerRoutedEventArgs const& e);
+        /// <summary>Chỉ bỏ trạng thái kéo và nhả bắt chuột; bên gọi tự vẽ lại nếu cần.</summary>
+        void CancelCellDrag();
+        /// <summary>Ô dưới điểm <paramref name="p"/> theo Bounds đã chụp; −1 = khe giữa ô / ngoài lưới.</summary>
+        static int CellAt(TrayMap const& map, Windows::Foundation::Point p);
+        bool InDragRect(TrayMap const& map, int cell) const;
         void UpdateRunButton(scs::EMcState state);
         void UpdateCounters();
         void UpdateLog();
@@ -133,6 +174,9 @@ namespace winrt::ShieldCanLaser::implementation
         std::array<TrayMap, TrayCount> m_trayMaps;
         std::array<NozzleRow, NozzleCount + 1> m_nozzles;   // chỉ số 1…7
         int m_lastNgStreak{ -1 };   // NG liên tiếp > 0 (1) / = 0 (0) đã tô; -1 = chưa tô
+        CellDrag m_drag;
+        int m_shownSelCount{ -1 };  // số ô chọn đang ghi trên nút Clear (n)
+        int m_shownAuto{ -1 };      // công tắc đang tô AUTO (1) / MANUAL (0); -1 = chưa tô
         CamFrame m_cam;
         int m_camNozzle{ -1 };      // nozzle của ảnh CAM đang hiện trên tiêu đề; -1 = chưa đặt
 
@@ -143,6 +187,8 @@ namespace winrt::ShieldCanLaser::implementation
         // Nhật ký: bản chụp LogWorker đang hiện (mới nhất đứng đầu, cùng thứ tự với LogPanel).
         uint64_t m_logVersion{ ~0ull };
         std::vector<scs::LogData> m_shownLogs;
+        bool m_logShown{ false };   // card Log đang hiện / đang mở ra
+        Microsoft::UI::Xaml::Media::Animation::Storyboard m_logAnim{ nullptr };
 
         // Control VisionMaster — tạo lần đầu trang hiện (không tạo khi vision giả / chụp ảnh).
         bool m_vmAttempted{ false };

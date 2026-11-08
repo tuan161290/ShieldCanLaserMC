@@ -58,11 +58,9 @@ namespace scs
         bool emgOk = io != nullptr && io->IsConnected() && io->GetDi(IoMap::EmgOk);
         bool ioOk = io != nullptr && io->IsConnected();
         bool curtainOk = !sys->HasLightCurtain || (io != nullptr && io->GetDi(IoMap::LightCurtainOk));
-        bool airOk = !sys->HasAirSensor || (io != nullptr && io->GetDi(IoMap::AirOk));
 
         m_status.SetEmgOk(emgOk);
         m_status.SetLightCurtainOk(curtainOk);
-        m_status.SetAirOk(airOk);
         m_status.SetIoConnected(ioOk);
         m_status.SetMotionConnected(m_motion.AllConnected());
 
@@ -113,10 +111,6 @@ namespace scs
             m_curtainWasOk = true;
         }
 
-        // ── Áp suất khí (chỉ khi máy có cảm biến — SystemData.HasAirSensor) ──
-        if (ioOk && !airOk) AlarmManager::Raise(AlarmCode::AirPressureLow);
-        else AlarmManager::ClearCondition(AlarmCode::AirPressureLow);
-
         // ── Trục có alarm thì dừng luôn, không chờ routine phát hiện ──
         if (m_motion.AnyAlarm() || !m_motion.AllConnected())
         {
@@ -126,11 +120,11 @@ namespace scs
         }
 
         // ── Kết luận ──
-        m_status.SetSafetyChainOk(emgOk && curtainOk && airOk);
-        m_safeToMove = ComputeSafeToMove(ioOk, emgOk, curtainOk, airOk);
+        m_status.SetSafetyChainOk(emgOk && curtainOk);
+        m_safeToMove = ComputeSafeToMove(ioOk, emgOk, curtainOk);
     }
 
-    bool SafetyMonitor::ComputeSafeToMove(bool ioOk, bool emgOk, bool curtainOk, bool airOk)
+    bool SafetyMonitor::ComputeSafeToMove(bool ioOk, bool emgOk, bool curtainOk)
     {
         if (!ioOk)                     { SetBlockReason("I/O card disconnected"); return false; }
         if (!emgOk)                    { SetBlockReason("EMG active"); return false; }
@@ -138,7 +132,6 @@ namespace scs
         if (AlarmManager::HasError())  { SetBlockReason("alarm not cleared"); return false; }
         if (!m_motion.AllConnected())  { SetBlockReason("axis disconnected"); return false; }
         if (m_motion.AnyAlarm())       { SetBlockReason("axis alarm"); return false; }
-        if (!airOk)                    { SetBlockReason("air pressure low"); return false; }
 
         SetBlockReason("");
         return true;

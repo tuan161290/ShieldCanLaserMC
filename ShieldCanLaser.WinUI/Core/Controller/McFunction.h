@@ -138,6 +138,10 @@ namespace scs
 
         void StopAll() { m_motion.StopAll(); }
 
+        /// <summary>Kích khắc: LaserStart ON, giữ <paramref name="holdMs"/>, OFF. Bị huỷ giữa chừng (EMG/alarm) thì LaserStart
+        /// rớt và LaserStop phát một xung LaserPulseMinMs, rồi ném <c>base::OperationCanceled</c>. Hàm chặn.</summary>
+        void LaserPulse(int holdMs, std::stop_token ct);
+
     private:
         bool MoveHoldable(const std::string& axisName, double pos, double speed, std::stop_token ct, bool interlock, bool gentle = false);
         void MarkMoveEnded() { m_lastMoveEndedMs = m_clock.ElapsedMilliseconds(); }

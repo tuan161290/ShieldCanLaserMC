@@ -33,7 +33,6 @@ namespace scs
         // ── An toàn ──
         SCS_STATUS_PROP(bool, EmgOk, false)
         SCS_STATUS_PROP(bool, LightCurtainOk, true)
-        SCS_STATUS_PROP(bool, AirOk, true)
         SCS_STATUS_PROP(bool, SafetyChainOk, false)
 
         // ── Kết nối ──

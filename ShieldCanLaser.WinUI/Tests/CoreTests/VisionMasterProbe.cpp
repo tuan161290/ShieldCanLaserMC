@@ -65,23 +65,18 @@ namespace
     void NotLoaded(VisionMasterDevice& d)
     {
         CHECK(!d.IsSolutionLoaded());
-        VisionPose pose;
-        CHECK_MSG((pose = d.TriggerCalib(EVisionProcedure::GridCalib, AxisSnapshot{}, {}), !pose.Found && pose.Error == "Solution not loaded"), pose.Error);
+        CHECK(d.CheckModulePath("Flow1.GroupInspection") == "Solution not loaded");
         VmCallRequest req;
-        req.Flow = "LocateCan";
-        req.Globals["X_mm"] = 1.0;
-        req.Outputs = { "Found" };
+        req.Flow = "Flow1";
+        req.Module = "Flow1.GroupInspection";
+        req.Outputs = { "Result" };
         auto r = d.CallFlow(req, {});
         CHECK_MSG(!r.Ok && r.Error == "Solution not loaded", r.Error);
         req.Flow.clear();
         r = d.CallFlow(req, {});
         CHECK_MSG(!r.Ok && r.Error == "Missing Flow name", r.Error);
-        auto fo = d.ReadFlowOutputs("LocateCan");
-        CHECK_MSG(fo.Error == "Solution not loaded" && fo.Declared.empty(), fo.Error);
-        auto rep = d.SyncGlobalVariables(VisionGlobalVarCatalog::Build(static_cast<const SystemData*>(nullptr)), false);
-        CHECK_MSG(rep.Error == "Vision solution not loaded", rep.Error);
         CHECK(d.SaveSolution() == "Solution not loaded");
-        CHECK(d.RenderSource("LocateCan") == nullptr && d.RenderSource("LocateCan.Echo0") == nullptr && d.RenderSource("") == nullptr);
+        CHECK(d.RenderSource("Flow1") == nullptr && d.RenderSource("Flow1.GroupInspection") == nullptr && d.RenderSource("") == nullptr);
         CHECK(d.FlowNames().empty());
         CHECK(!d.LastImage() && d.LastImageNozzle() == 0);
     }
@@ -134,34 +129,25 @@ namespace
         CHECK(whole != nullptr && circle != nullptr);
         CHECK(d.RenderSource("Nope") == nullptr && d.RenderSource("Flow1.Nope") == nullptr);
 
-        VmFlowOutputs fo;
-        try { fo = d.ReadFlowOutputs("Flow1"); } catch (const std::exception& e) { fo.Error = e.what(); }
-        std::printf("    ReadFlowOutputs(Flow1): error=\"%s\" inputs=%d declared=", fo.Error.c_str(), fo.InputParamCount);
-        for (auto& o : fo.Declared) std::printf("%s(%d,%s) ", o.Name.c_str(), o.TypeCode, o.TypeText.c_str());
-        std::printf("\n");
-        CHECK(fo.Error.empty() && fo.Flow == "Flow1");
-        MustThrow("ReadFlowOutputs(Nope)", [&] { d.ReadFlowOutputs("Nope"); }, "Flow \"Nope\" not found");
-        MustThrow("ReadFlowOutputs(Flow1.Circle Search1)", [&] { d.ReadFlowOutputs("Flow1.Circle Search1"); }, "not found");
+        // Đường dẫn Group: Flow không có → ném; module có mà không phải Group, hoặc không có → lý do (không ném).
+        MustThrow("CheckModulePath(Nope.G)", [&] { d.CheckModulePath("Nope.G"); }, "Flow \"Nope\" not found");
+        std::string why = d.CheckModulePath("Flow1.Circle Search1");
+        std::printf("    CheckModulePath(Flow1.Circle Search1) -> \"%s\"\n", why.c_str());
+        CHECK_MSG(Contains(why, "is not a Group"), why);
+        why = d.CheckModulePath("Flow1.NoSuchGroup");
+        CHECK_MSG(Contains(why, "Group \"NoSuchGroup\" not found in Flow \"Flow1\""), why);
 
         VmCallRequest req;
         req.Flow = "Flow1";
         req.Camera = EVmCamera::Cam;
-        req.Globals["Nozzle"] = 4;
-        req.OptionalOutputs = { "NoSuchOut" };
+        req.Nozzle = 4;
         VmCallResult r;
         try { r = d.CallFlow(req, {}); } catch (const std::exception& e) { r.Error = e.what(); }
         auto img = d.LastImage();
-        std::printf("    CallFlow(Flow1): ok=%d error=\"%s\" missingOptional=%zu image=%s\n", r.Ok, r.Error.c_str(), r.MissingOptional.size(),
-                    img ? std::format("{}x{}x{} stride {} bytes {}", img->Width, img->Height, img->Channels, img->Stride, img->Pixels.size()).c_str() : "null");
-        // Solution mẫu không có module Global Variable → ghi biến Nozzle phải ném; bỏ biến đi thì chạy được.
-        if (!r.Ok)
-        {
-            CHECK_MSG(Contains(r.Error, "Global Variable"), r.Error);
-            req.Globals.clear();
-            try { r = d.CallFlow(req, {}); } catch (const std::exception& e) { r.Error = e.what(); }
-            img = d.LastImage();
-        }
-        CHECK(r.Ok && r.MissingOptional == std::vector<std::string>({ "NoSuchOut" }));
+        std::printf("    CallFlow(Flow1): ok=%d error=\"%s\" image=%s nozzle=%d\n", r.Ok, r.Error.c_str(),
+                    img ? std::format("{}x{}x{} stride {} bytes {}", img->Width, img->Height, img->Channels, img->Stride, img->Pixels.size()).c_str() : "null",
+                    d.LastImageNozzle());
+        CHECK(r.Ok && d.LastImageNozzle() == 4);
         // Solution mẫu trên máy dev KHÔNG khai output "ImageData" ở cấp Flow (GetAllOutputNameInfo n = 0,
         // GetOutputImageV2 ném 0xE000001F, Image Source không có ảnh) — nên ảnh null là đúng. Có ảnh thì phải hợp lệ.
         CHECK(!img || (img->Width > 0 && img->Height > 0 && img->Pixels.size() == static_cast<size_t>(img->Stride) * img->Height));
@@ -170,9 +156,9 @@ namespace
         req.Outputs = { "NoSuchOut" };
         MustThrow("CallFlow(required NoSuchOut)", [&] { d.CallFlow(req, {}); }, "missing output \"NoSuchOut\"");
         req.Outputs.clear();
-        req.Globals["X_mm"] = 1.0;
-        MustThrow("CallFlow(Globals X_mm)", [&] { d.CallFlow(req, {}); }, "Global Variable");
-        req.Globals.clear();
+        req.Module = "Flow1.Circle Search1";
+        MustThrow("CallFlow(Module not a Group)", [&] { d.CallFlow(req, {}); }, "is not a Group");
+        req.Module.clear();
         req.Flow = "Nope";
         MustThrow("CallFlow(Nope)", [&] { d.CallFlow(req, {}); }, "Flow \"Nope\" not found");
         std::stop_source cancelled;
@@ -181,12 +167,6 @@ namespace
         bool cancelledOk = false;
         try { d.CallFlow(req, cancelled.get_token()); } catch (const base::OperationCanceled&) { cancelledOk = true; } catch (...) {}
         CHECK(cancelledOk);
-
-        MustThrow("TriggerCalib(GridCalib)", [&] { d.TriggerCalib(EVisionProcedure::GridCalib, AxisSnapshot{}, {}); }, "Global Variable");
-
-        auto rep = d.SyncGlobalVariables(VisionGlobalVarCatalog::Build(static_cast<const SystemData*>(nullptr)), true);
-        std::printf("    SyncGlobalVariables(apply) error=\"%s\"\n", rep.Error.c_str());
-        CHECK(Contains(rep.Error, "Global Variable") && !rep.Saved);
 
         std::string saved = d.SaveSolution();
         std::printf("    SaveSolution -> \"%s\"\n", saved.c_str());
@@ -273,11 +253,9 @@ int RunVisionMasterProbe()
         auto r = vc.CallFlow(VmCallRequest{ "LocateCan" }, {});
         std::printf("    VisionConnect: load=%d CallFlow(LocateCan) -> \"%s\"\n", loaded, r.Error.c_str());
         CHECK_MSG(!r.Ok && (loaded ? Contains(r.Error, "Flow \"LocateCan\" not found") : r.Error == "Solution not loaded"), r.Error);
-        AxisSnapshot n2{};
-        n2.Nozzle = 2;
-        auto pose = vc.TriggerCalib(EVisionProcedure::GridCalib, n2, {});
-        std::printf("    VisionConnect: TriggerCalib(GridCalib nozzle 2, LocateCan nhánh hiệu chuẩn) -> \"%s\"\n", pose.Error.c_str());
-        CHECK(!pose.Found && !pose.Error.empty());
+        std::string why = vc.CheckModulePath("LocateCan.GroupInspection");
+        std::printf("    VisionConnect: CheckModulePath(LocateCan.GroupInspection) -> \"%s\"\n", why.c_str());
+        CHECK(!why.empty());
         vc.Disconnect();
         vc.Disconnect();
         VisionConnect::SetRealDeviceFactory({});

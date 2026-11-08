@@ -295,7 +295,7 @@ namespace winrt::ShieldCanLaser::implementation
         menu.ShowAt(UserButton());
     }
 
-    // RESET — chung một đường với nút RESET trong bảng alarm và nút RESET vật lý (McControl::RequestReset).
+    // RESET — chung một đường với nút RESET trong bảng alarm (McControl::RequestReset). Máy không có nút RESET cứng.
     void MainWindow::OnResetClick(WF::IInspectable const&, RoutedEventArgs const&)
     {
         scs::McControl::RequestReset();
@@ -331,6 +331,11 @@ namespace winrt::ShieldCanLaser::implementation
         MotionLamp().Fill(ui::StatusBrush(status.MotionConnected()));
         IoLamp().Fill(ui::StatusBrush(status.IoConnected()));
         VisionLamp().Fill(ui::StatusBrush(status.VisionConnected()));
+        // Laser: xanh = sẵn sàng (X004), cam = đang khắc (X005), xám = chưa sẵn sàng / mất I/O. Chỉ hiển thị, chu trình chưa đọc.
+        auto io = scs::McControl::Io();
+        const bool ioOk = io && status.IoConnected();
+        LaserLamp().Fill(ioOk && io->GetDi(scs::IoMap::DiLaserBusy) ? ui::Res(L"CautionOnBrush")
+                                                                    : ui::StatusBrush(ioOk && io->GetDi(scs::IoMap::DiLaserReady)));
         UpdateRealtimeStatus();
 
         bool hasAlarms = scs::AlarmManager::ActiveCount() > 0;

@@ -71,7 +71,7 @@ namespace scs
                 {
                     std::lock_guard<std::recursive_mutex> lock(gate->cmdLock);
                     // Lần gọi đã bị bỏ (quá giờ/huỷ) trong lúc còn xếp hàng chờ khoá — ví dụ sau một Run treo — thì
-                    // không chạy muộn nữa: chạy muộn là ghi biến cũ, và Flow hiệu chuẩn nạp thêm một điểm sai.
+                    // không chạy muộn nữa: chụp muộn là chụp nhầm can (trục đã đi chỗ khác).
                     if (st->abandoned.load() != 1) value = body();
                 }
                 catch (...) { error = std::current_exception(); }
@@ -162,12 +162,7 @@ namespace scs
 
     bool VisionConnect::Connect()
     {
-        if (m_fake)
-        {
-            bool ok = m_fake->Connect();
-            m_fake->SeedVmSolution(VisionGlobalVarCatalog::Build(m_sys.get()));
-            return ok;
-        }
+        if (m_fake) return m_fake->Connect();
 
         std::string why;
         auto dev = EnsureDevice(why);
@@ -224,125 +219,21 @@ namespace scs
         }
     }
 
-    std::string VisionConnect::FlowNameOf(const VisionOutputNames& names, EVisionProcedure)
+    std::string VisionConnect::CheckModulePath(const std::string& path)
     {
-        return names.FlowLocateCan;
-    }
+        if (m_fake) return m_fake->CheckModulePath(path);
 
-    std::map<std::string, double> VisionConnect::AxisVars(const VisionOutputNames& names, const AxisSnapshot& axes)
-    {
-        std::map<std::string, double> vars;
-        if (!names.GvAxisX.empty()) vars[names.GvAxisX] = axes.X;
-        if (!names.GvAxisZ.empty()) vars[names.GvAxisZ] = axes.Z;
-        if (!names.GvNozzle.empty()) vars[names.GvNozzle] = axes.Nozzle;
-        return vars;
-    }
-
-    std::map<std::string, double> VisionConnect::CalibVars(const VisionOutputNames& names, const AxisSnapshot& axes)
-    {
-        auto vars = AxisVars(names, axes);
-        if (!names.GvIsLocate.empty()) vars[names.GvIsLocate] = 0;   // nhánh hiệu chuẩn
-        return vars;
-    }
-
-    int VisionConnect::NozzleOf(const VisionOutputNames& names, const std::map<std::string, double>& globals)
-    {
-        if (names.GvNozzle.empty()) return 0;
-        auto it = globals.find(names.GvNozzle);
-        if (it == globals.end() || std::isnan(it->second)) return 0;
-        int n = static_cast<int>(std::lround(it->second));
-        return n >= 1 && n <= VisionOutputNames::NozzleCount ? n : 0;
-    }
-
-    VisionPose VisionConnect::TriggerCalib(EVisionProcedure procedure, const AxisSnapshot& axes, std::stop_token ct)
-    {
-        if (m_fake) return m_fake->TriggerCalib(procedure, axes, ct);
-
-        if (!IsConnected()) return VisionPose::NotFound("Not connected");
-        if (!IsSolutionLoaded()) return VisionPose::NotFound("Solution not loaded");
-
-        auto dev = Device();
-        std::string flow = FlowNameOf(m_sys->VisionOutputs, procedure);
-        if (flow.empty()) return VisionPose::NotFound("Flow name not set on Setting page");
-
-        try
-        {
-            // Ghi trước, chạy sau, trong cùng một lượt giữ khoá lệnh của thiết bị.
-            auto result = RunWithTimeout<VisionPose>(m_gate, m_sys->VisionTriggerTimeoutMs,
-                [dev, procedure, axes, ct] { return dev->TriggerCalib(procedure, axes, ct); }, ct);
-
-            if (!result)
-            {
-                if (ct.stop_requested()) return VisionPose::NotFound("Canceled");
-                AlarmManager::RaiseEvent(AlarmCode::VisionTriggerTimeout, "Vision", flow);
-                return VisionPose::NotFound("Timeout");
-            }
-            return *result;
-        }
-        catch (const base::OperationCanceled&) { return VisionPose::NotFound("Canceled"); }
-        catch (const std::exception& ex)
-        {
-            LogError("Vision: " + flow + " failed — " + What(ex));
-            return VisionPose::NotFound(What(ex));
-        }
-    }
-
-    CalibClearResult VisionConnect::ClearCalibPoints(EVisionProcedure procedure)
-    {
-        if (m_fake) return m_fake->ClearCalibPoints(procedure);
-
-        if (!IsConnected()) return CalibClearResult::Fail("Not connected");
-        if (!IsSolutionLoaded()) return CalibClearResult::Fail("Solution not loaded");
-        std::string flow = FlowNameOf(m_sys->VisionOutputs, procedure);
-        if (flow.empty()) return CalibClearResult::Fail("Flow name not set on Setting page");
+        if (base::Trim(path).empty()) return "Path not set on Setting page";
+        if (!IsConnected()) return "Not connected";
+        if (!IsSolutionLoaded()) return "Solution not loaded";
 
         auto dev = Device();
         try
         {
             std::lock_guard<std::recursive_mutex> lock(m_gate->cmdLock);
-            auto r = dev->ClearCalibPoints(procedure);
-            if (r.Ok()) LogWorker::Instance().RecordLog("Vision: Clear Point " + flow + " — " + base::Join(r.Modules, ", "), LogLevel::Info, "Vision");
-            else LogError("Vision: Clear Point " + flow + " failed — " + r.Error);
-            return r;
+            return dev->CheckModulePath(path);
         }
-        catch (const std::exception& ex)
-        {
-            LogError("Vision: Clear Point " + flow + " failed — " + What(ex));
-            return CalibClearResult::Fail(What(ex));
-        }
-    }
-
-    GlobalVarSyncReport VisionConnect::SyncGlobalVariables(const std::vector<GlobalVarSpec>& specs, bool apply)
-    {
-        if (m_fake) return m_fake->SyncGlobalVariables(specs, apply);
-
-        if (!IsSolutionLoaded()) return GlobalVarSyncReport::Fail("Vision solution not loaded");
-        auto dev = Device();
-        try
-        {
-            // Không canh giờ như Run(): lưu solution có thể mất vài giây, và bỏ dở giữa chừng tệ hơn chờ.
-            // Vẫn giữ khoá lệnh để không lọt lần kích Flow nào vào giữa.
-            std::lock_guard<std::recursive_mutex> lock(m_gate->cmdLock);
-            return dev->SyncGlobalVariables(specs, apply);
-        }
-        catch (const std::exception& ex) { return GlobalVarSyncReport::Fail(What(ex)); }
-    }
-
-    VmFlowOutputs VisionConnect::ReadFlowOutputs(const std::string& flow)
-    {
-        if (m_fake) return m_fake->ReadFlowOutputs(flow);
-
-        if (flow.empty()) return VmFlowOutputs::Fail(flow, "Flow name not set on Setting page");
-        if (!IsConnected()) return VmFlowOutputs::Fail(flow, "Not connected");
-        if (!IsSolutionLoaded()) return VmFlowOutputs::Fail(flow, "Solution not loaded");
-
-        auto dev = Device();
-        try
-        {
-            std::lock_guard<std::recursive_mutex> lock(m_gate->cmdLock);
-            return dev->ReadFlowOutputs(flow);
-        }
-        catch (const std::exception& ex) { return VmFlowOutputs::Fail(flow, What(ex)); }
+        catch (const std::exception& ex) { return What(ex); }
     }
 
     VmCallResult VisionConnect::CallFlow(const VmCallRequest& request, std::stop_token ct)
@@ -356,7 +247,7 @@ namespace scs
         auto dev = Device();
         try
         {
-            // Ghi biến, chạy, đọc ngay — cùng một lượt giữ khoá lệnh của thiết bị.
+            // Chạy, đọc ngay — cùng một lượt giữ khoá lệnh của thiết bị.
             auto r = RunWithTimeout<VmCallResult>(m_gate, m_sys->VisionTriggerTimeoutMs,
                 [dev, request, ct] { return dev->CallFlow(request, ct); }, ct);
 

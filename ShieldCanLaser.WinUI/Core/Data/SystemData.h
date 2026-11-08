@@ -10,77 +10,30 @@
 namespace scs
 {
     /// <summary>
-    /// Tên Flow (Procedure) và tên biến trong solution VisionMaster — máy Laser Marking có MỘT camera và MỘT Flow
-    /// <c>LocateCan</c> (PLAN-LASER.md §4.1): soi can đang treo trên nozzle, rẽ nhánh soi / nạp điểm hiệu chuẩn bằng biến
-    /// int <see cref="GvIsLocate"/> App ghi trước mỗi lần kích. Sửa tự do ở trang Setting; VisionConnect đọc các tên này lúc
-    /// trigger. Tên Flow VisionMaster 4.4 tối đa 16 ký tự.
+    /// Vision của máy Laser Marking chỉ KIỂM TRA sau khi khắc (Tuấn 2026-11-08: khách không cần bù độ lệch cho đầu khắc).
+    /// Mỗi nozzle: App chạy Flow, đọc MỘT output <c>Result</c> của Group kiểm tra — 1 = OK, khác 1 = NG (PLAN-LASER.md §4).
+    /// App không ghi biến toàn cục nào. Sửa ở trang Setting; VisionConnect đọc lúc chạy.
     /// </summary>
     struct VisionOutputNames
     {
         static constexpr int NozzleCount = 7;
+        /// <summary>Tên output của Group mà App đọc — cố định, không cấu hình.</summary>
+        static constexpr const char* OutResult = "Result";
 
-        // ── Flow (Procedure) ──
-        std::string FlowLocateCan = "LocateCan";   // CAM — soi can trên nozzle / nạp điểm N-point (X × Z)
-
-        // ── Output chung ──
-        std::string OutFound = "Found";        // 1.0 = tìm thấy, 0.0 = không
-        std::string OutImage = "ImageData";    // trống thì không lấy ảnh
-
-        // ── Khung ảnh trang Main: "LocateCan" → cả Flow; "LocateCan.Module" → module đó; trống → Flow soi ──
+        /// <summary>"Flow.Group": phần trước dấu chấm đầu tiên là Flow App chạy, cả chuỗi là đường dẫn Group đọc
+        /// <see cref="OutResult"/>. Tên Flow VisionMaster 4.4 tối đa 16 ký tự.</summary>
+        std::string InspectPath = "Flow1.GroupInspection";
+        /// <summary>Output ảnh cấp Flow cho khung CAM trang Main; trống thì không lấy ảnh.</summary>
+        std::string OutImage = "ImageData";
+        /// <summary>Khung ảnh trang Main: "Flow" → cả Flow; "Flow.Module" → module đó; trống → Flow kiểm tra.</summary>
         std::string RenderCam;
 
+        /// <summary>Flow của <see cref="InspectPath"/> (phần trước dấu chấm đầu tiên, bỏ khoảng trắng).</summary>
+        std::string InspectFlow() const;
+        /// <summary>Lý do <see cref="InspectPath"/> không dùng được; rỗng = dùng được.</summary>
+        std::string InspectPathProblem() const;
+
         static std::string RenderPath(std::string_view flow, std::string_view path);
-
-        // ── Biến toàn cục App ghi NGAY TRƯỚC mỗi lần kích Flow ──
-        std::string GlobalVarModule;           // trống = App tự dò module đầu tiên đúng kiểu
-        std::string GvAxisX = "X_mm";
-        std::string GvAxisZ = "Z_mm";
-        /// <summary>Nozzle đang soi 1…7 (float) — Flow chỉ dùng để hiển thị/log.</summary>
-        std::string GvNozzle = "Nozzle";
-        /// <summary>Biến rẽ nhánh, kiểu <b>int</b>: App ghi 1 trước mỗi lần soi, 0 trước mỗi lần nạp điểm hiệu chuẩn —
-        /// trong CÙNG lời gọi với lần kích Flow. Trống = không ghi (Flow không rẽ nhánh).</summary>
-        std::string GvIsLocate = "IsLocate";
-    };
-
-    /// <summary>
-    /// Tham số các bước hiệu chuẩn vision ở trang Vision Edit (PLAN-LASER.md §4.2). Lưu trong system.json (khoá
-    /// "VisionCalib"), không phải model: chúng tả cách đo, không tả sản phẩm.
-    /// </summary>
-    struct VisionCalibSettings
-    {
-        // ── Lưới 9 điểm X × Z ──
-        double CenterX = 0, CenterZ = 0;    // tâm lưới = điểm 5 (Calibration Center Point)
-        bool CenterSet = false;             // phân biệt "chưa lưu" với "lưu đúng tại (0, 0)"
-        double GridStepX = 5.0, GridStepZ = 5.0;
-        /// <summary>Nozzle ngậm can mẫu khi hiệu chuẩn lưới (1…7).</summary>
-        int CalibNozzle = 1;
-
-        // ── Kiểm tra lưới ──
-        double VerifyStepMm = 3.0;
-
-        // ── Chung ──
-        int ShotsPerPoint = 5;              // số ảnh lấy trung bình ở các phép đo hằng số
-        double ResidualTolMm = 0.05;        // dung sai kiểm tra lưới: Rel phải đứng yên trong ngưỡng này
-
-        /// <summary>Danh sách số "-4, -2, 2" (dấu phẩy hoặc chấm phẩy); phần tử hỏng bị bỏ.</summary>
-        static std::vector<double> ParseList(std::string_view text);
-    };
-
-    /// <summary>
-    /// Bù ở trạm laser (PLAN-LASER.md §4.3). Dev = (dX, dZ) = độ lệch can so với can mẫu của nozzle, theo chiều máy
-    /// (X ↔ trục X, Z ↔ trục Z). Laser không có giao tiếp và máy không có trục xoay — chỉ bù bằng hai trục này
-    /// (Tuấn 2026-10-27). Dấu là tham số: chạy ngược thì đổi ở trang Setting, không sửa code.
-    /// </summary>
-    struct LaserCompSettings
-    {
-        /// <summary>X_target = Laser(k).X + TrimX[k] + GainX · dX.</summary>
-        double GainX = -1.0;
-        /// <summary>Z_target = Laser(k).Z + TrimZ[k] + GainZ · dZ.</summary>
-        double GainZ = -1.0;
-        /// <summary>|dX| hoặc |dZ| vượt ngưỡng → ô NG, không khắc (cảnh báo 5004).</summary>
-        double MaxCompMm = 3.0;
-        /// <summary>Thời gian giữ DO kích laser tối thiểu (ms) — MarkTimeMs của model nhỏ hơn thì vẫn giữ đủ số này. PHỎNG ĐOÁN.</summary>
-        int LaserPulseMinMs = 50;
     };
 
     /// <summary>
@@ -125,7 +78,6 @@ namespace scs
         double ZSafe = 10.0;                 // cao độ an toàn của Z (mm); Z dương là đi xuống
         bool ZSafeInterlock = true;          // X/Y chỉ chạy khi Z ở cao độ an toàn
         bool HasLightCurtain = false;
-        bool HasAirSensor = false;           // DI AirOk
         bool HasTraySensors = true;          // DI TrayPresent 1, 2; tắt = coi như luôn có tray
         int ControlTickMs = 20;              // chu kỳ quét SafetyMonitor và vòng điều khiển
         int WatchdogTimeoutMs = 500;         // vòng điều khiển im quá lâu → alarm 1002
@@ -137,11 +89,10 @@ namespace scs
         int VisionSettleMs = 200;            // chờ cơ khí thôi rung rồi mới kích Flow
         int LampSettleMs = 100;
         VisionOutputNames VisionOutputs;
-        VisionCalibSettings VisionCalib;
-        int CalibValidDays = 90;             // quá hạn → cảnh báo 4090
 
-        // ── Laser: chỉ DO kích + bù trục ──
-        LaserCompSettings LaserComp;
+        // ── Laser: chỉ DO kích, không gửi gì sang đầu khắc ──
+        /// <summary>Thời gian giữ DO kích laser tối thiểu (ms) — MarkTimeMs của model nhỏ hơn thì vẫn giữ đủ số này. PHỎNG ĐOÁN.</summary>
+        int LaserPulseMinMs = 50;
 
         // ── Trục ──
         std::vector<std::shared_ptr<AxisConfig>> Axes;

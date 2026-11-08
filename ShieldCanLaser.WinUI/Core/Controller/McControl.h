@@ -3,11 +3,9 @@
 #include <string>
 
 #include "Base/Event.h"
-#include "Communication/GlobalVarSync.h"
 #include "Communication/IIoDevice.h"
 #include "Communication/MotionConnect.h"
 #include "Communication/VisionConnect.h"
-#include "Communication/VmOutCheck.h"
 #include "Controller/McFunction.h"
 #include "Controller/McStatus.h"
 #include "Controller/Routine_Auto.h"
@@ -46,10 +44,9 @@ namespace scs
         /// <summary>Các bước hiệu chuẩn vision của trang Vision Edit.</summary>
         static std::shared_ptr<Routine_Calib> Calib();
 
-        /// <summary>Giây đã chạy của lượt Auto hiện tại — bộ đếm "cycle time hiện tại" ở trang Main.</summary>
-        static double CurrentCycleSec();
-        /// <summary>Số SP đã gắn xong của lượt Auto hiện tại — Tack Time lượt đang chạy ở trang Main.</summary>
-        static int CurrentCycleProducts();
+        /// <summary>Tắt servo một trục. Với Z: đóng phanh (Y020) và chờ phanh ăn rồi mới tắt, để Z không rơi. Mọi lệnh tắt
+        /// servo chủ động đi qua đây, không gọi thẳng <c>SetServoOn(false)</c>. Hàm chặn — gọi từ luồng nền.</summary>
+        static bool ServoOff(const std::shared_ptr<IAxis>& axis);
 
         /// <summary>Bấm AUTO mà chưa đủ điều kiện vào sẵn sàng — máy ở lại MANUAL, kèm lý do để UI bật hộp thoại.
         /// Bắn từ vòng quét (thread nền).</summary>
@@ -89,13 +86,10 @@ namespace scs
         /// <returns>Lý do từ chối, chuỗi RỖNG nếu đã yêu cầu nạp.</returns>
         static std::string ReloadVisionSolution();
 
-        /// <summary>Kiểm tra (<paramref name="apply"/> = false) hoặc tạo các biến toàn cục mà các Flow cần trong
-        /// solution đang nạp — danh mục ở <see cref="VisionGlobalVarCatalog"/>. CHẶN — gọi từ luồng nền.</summary>
-        static GlobalVarSyncReport SyncVisionGlobalVariables(bool apply);
-
-        /// <summary>Đối chiếu tab Output Params của các Flow với hợp đồng — đọc khai báo, KHÔNG chạy Flow nào.
-        /// CHẶN — gọi từ luồng nền.</summary>
-        static VmOutCheckReport CheckVisionFlowOutputs();
+        /// <summary>Kiểm đường dẫn Flow.Group của bước kiểm tra trong solution đang nạp: Flow có, Group có — KHÔNG chạy
+        /// Flow. Rỗng = đạt, khác rỗng = lý do. Output Result chỉ kiểm được ở lần chạy đầu (SDK C++ không liệt kê được
+        /// output của Group khi chưa chạy). CHẶN — gọi từ luồng nền.</summary>
+        static std::string CheckInspectionPath();
 
         // Các hàm Request* gọi được từ bất kỳ thread nào (kể cả UI); vòng quét mới thực sự xử lý.
 
@@ -120,9 +114,24 @@ namespace scs
         /// <summary>Còn routine (Về gốc / Init / Auto) đang chạy. Gọi được từ mọi luồng.</summary>
         static bool RoutineBusy();
 
-        /// <summary>Nút RESET TRAY trang Main: hai tray vừa thay — số hàng đã chạy về 0. Đang chờ thay tray thì tương đương
-        /// bấm START. Trả lý do từ chối, rỗng = đã làm.</summary>
+        /// <summary>Nút RESET TRAY trang Main: hai tray vừa thay — mọi ô về chưa chạy, bỏ chọn ô. Đang chờ thay tray thì
+        /// tương đương bấm START (giữ ô chọn trước). Trả lý do từ chối, rỗng = đã làm.</summary>
         static std::string ResetTrays();
+
+        // ── Chọn ô chạy lẻ (trang Main). Gọi từ luồng UI; sổ ô có khoá riêng, chu trình đọc mỗi lần lấy hàng. ──
+        /// <summary>Phạm vi chạy đang khoá: chu trình đang chạy hàng (kể cả STOP giữ tại chỗ). Bỏ chọn lúc này thì máy sẽ
+        /// khắc cả tray. Lúc chờ thay tray thì không khoá.</summary>
+        static bool CellSelectionLocked();
+        /// <summary>Chạm ô có tác dụng: AUTO và không khoá (như ShieldCanAssy, chỉ chọn ở AUTO).</summary>
+        static bool CanSelectCells();
+        /// <summary>Ô chọn được không (tray 0-based, ô = hàng × 7 + cột): không được là ô trên tray vắng, và ô đã chạy — khắc lại
+        /// là đè lên can đã khắc — trừ lúc mọi tray có mặt đã xong hết: đó là chọn trước cho tray mới.</summary>
+        static bool CanSelectCell(int tray, int cell);
+        /// <summary>Chọn / bỏ chọn một ô. Ô không chọn được thì báo lý do ở dòng thông báo.</summary>
+        static void ToggleCellSelection(int tray, int cell);
+        /// <summary>Kéo chọn một vùng. Chọn thì bỏ qua ô không chọn được; cả vùng đều không được thì báo lý do. Bỏ chọn thì cả vùng.</summary>
+        static void SetCellsSelected(int tray, const std::vector<int>& cells, bool on);
+        static void ClearCellSelection();
 
         /// <summary>Bảng đèn tháp: dừng là VÀNG, sẵn sàng AUTO là XANH NHÁY, chạy là XANH IM, lỗi là ĐỎ.</summary>
         static ETowerLamp ComputeLamp();

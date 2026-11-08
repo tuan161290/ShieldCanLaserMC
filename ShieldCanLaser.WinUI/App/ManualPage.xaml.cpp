@@ -197,7 +197,7 @@ namespace winrt::ShieldCanLaser::implementation
             button.Margin(ThicknessHelper::FromLengths(0, 0, 6, 0));
             button.Content(makeRow(m_doLamps[bit], m_lampBrushes, scs::IoMap::DoLabel(bit) + "  " + doNames[bit]));
             // Đọc-đảo-ghi ngay trong hàng đợi lệnh tay: SetDo trên EtherCAT chặn ngắn; bấm hai lần liên tiếp đảo đúng hai lần.
-            // Đèn tháp/còi/đèn nút do vòng quét ghi lại mỗi chu kỳ nên đảo tay sẽ bị ghi đè ngay.
+            // Đèn tháp/còi/đèn nút/phanh Z do vòng quét ghi lại mỗi chu kỳ nên đảo tay sẽ bị ghi đè ngay.
             button.Click([bit](auto&&, auto&&) {
                 ui::PostMotionCommand([bit] {
                     if (auto io = scs::McControl::Io()) io->SetDo(bit, !io->GetDo(bit));
@@ -289,7 +289,7 @@ namespace winrt::ShieldCanLaser::implementation
             ui::SetTint(m_nozzleButtons[(size_t)k], valve ? ui::Tint::Green : ui::Tint::None);
             m_nozzleLamps[(size_t)k].Set(sensor);
         }
-        ui::SetTint(CamLightButton(), io && io->GetDo(scs::IoMap::DoCamLight) ? ui::Tint::Green : ui::Tint::None);
+        ui::SetTint(CamLightButton(), io && io->GetDo(scs::IoMap::DoLightCam) ? ui::Tint::Green : ui::Tint::None);
 
         int laserBusy = m_laserBusy.load() ? 1 : 0;
         if (laserBusy != m_shownLaserBusy)
@@ -297,7 +297,7 @@ namespace winrt::ShieldCanLaser::implementation
             m_shownLaserBusy = laserBusy;
             LaserTestButton().IsEnabled(!laserBusy);
         }
-        ui::SetTint(LaserTestButton(), io && io->GetDo(scs::IoMap::DoLaserTrigger) ? ui::Tint::Red : ui::Tint::None);
+        ui::SetTint(LaserTestButton(), io && io->GetDo(scs::IoMap::LaserStart) ? ui::Tint::Red : ui::Tint::None);
     }
 
     void ManualPage::UpdateSafety()
@@ -456,7 +456,7 @@ namespace winrt::ShieldCanLaser::implementation
                 try
                 {
                     std::vector<std::function<bool()>> jobs;
-                    for (const auto& axis : targets) jobs.push_back([axis] { return axis->SetServoOn(false); });
+                    for (const auto& axis : targets) jobs.push_back([axis] { return scs::McControl::ServoOff(axis); });
                     if (!jobs.empty()) ::base::WhenAll(std::move(jobs));
                 }
                 catch (const std::exception& ex)
@@ -483,7 +483,7 @@ namespace winrt::ShieldCanLaser::implementation
     void ManualPage::OnCamLightClick(WF::IInspectable const&, RoutedEventArgs const&)
     {
         ui::PostMotionCommand([] {
-            if (auto io = scs::McControl::Io()) io->SetDo(scs::IoMap::DoCamLight, !io->GetDo(scs::IoMap::DoCamLight));
+            if (auto io = scs::McControl::Io()) io->SetDo(scs::IoMap::DoLightCam, !io->GetDo(scs::IoMap::DoLightCam));
         });
     }
 
@@ -528,9 +528,9 @@ namespace winrt::ShieldCanLaser::implementation
         if (auto io = SimIo()) io->SimPress(scs::IoMap::BtnStop);
     }
 
-    void ManualPage::OnSimResetClick(WF::IInspectable const&, RoutedEventArgs const&)
+    void ManualPage::OnSimStart2Click(WF::IInspectable const&, RoutedEventArgs const&)
     {
-        if (auto io = SimIo()) io->SimPress(scs::IoMap::BtnReset);
+        if (auto io = SimIo()) io->SimPress(scs::IoMap::BtnStart2);
     }
 
     void ManualPage::OnSimEmgClick(WF::IInspectable const&, RoutedEventArgs const&)
@@ -541,11 +541,6 @@ namespace winrt::ShieldCanLaser::implementation
     void ManualPage::OnSimCurtainClick(WF::IInspectable const&, RoutedEventArgs const&)
     {
         if (auto io = SimIo()) io->SimToggle(scs::IoMap::LightCurtainOk);
-    }
-
-    void ManualPage::OnSimAirClick(WF::IInspectable const&, RoutedEventArgs const&)
-    {
-        if (auto io = SimIo()) io->SimToggle(scs::IoMap::AirOk);
     }
 
     // Cảm biến giữ mức của chu trình: hai tray.

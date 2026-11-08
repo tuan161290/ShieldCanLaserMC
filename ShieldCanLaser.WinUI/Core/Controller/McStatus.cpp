@@ -10,8 +10,8 @@ namespace scs
             case EAutoState::S00_Ready:     return "S00 · Ready";
             case EAutoState::S10_WaitStart: return "S10 · Wait START";
             case EAutoState::S20_PickRow:   return "S20 · Pick row of 7 Shield CAN";
-            case EAutoState::S30_Vision:    return "S30 · CAM inspect each nozzle";
-            case EAutoState::S40_Laser:     return "S40 · Laser marking each nozzle";
+            case EAutoState::S30_Laser:     return "S30 · Laser marking each nozzle";
+            case EAutoState::S40_Inspect:   return "S40 · CAM inspecting each nozzle";
             case EAutoState::S50_PlaceRow:  return "S50 · Return row to tray";
             case EAutoState::S60_WaitTray:  return "S60 · Trays done — replace trays, press START";
             default:                        return ToString(s);

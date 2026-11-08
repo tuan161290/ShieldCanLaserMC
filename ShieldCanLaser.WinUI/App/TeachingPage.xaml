@@ -183,13 +183,13 @@
                                         <TextBox x:Name="AutoVacuumOnBox" LostFocus="OnAutoParamLostFocus"/>
                                     </StackPanel>
                                     <StackPanel Grid.Row="1" Grid.Column="1">
-                                        <TextBlock Text="Vacuum off delay (ms)" Style="{StaticResource CaptionStyle}"/>
+                                        <TextBlock Text="Vacuum off + blow (ms)" Style="{StaticResource CaptionStyle}"/>
                                         <TextBox x:Name="AutoVacuumOffBox" LostFocus="OnAutoParamLostFocus"/>
                                     </StackPanel>
                                     <StackPanel Grid.Row="2">
                                         <TextBlock Text="Laser mark time (ms)" Style="{StaticResource CaptionStyle}"/>
                                         <TextBox x:Name="AutoMarkTimeBox" LostFocus="OnAutoParamLostFocus"
-                                                 ToolTipService.ToolTip="The laser trigger output stays ON this long per can — the laser does not report completion, so set it to the marking time of this model's content"/>
+                                                 ToolTipService.ToolTip="The laser start output stays ON this long per can — the cycle waits this fixed time and does not read a completion signal, so set it to the marking time of this model's content"/>
                                     </StackPanel>
                                 </Grid>
                                 <CheckBox x:Name="AutoVisionCheck" Content="CAM step (measure can offset, compensate X/Z at laser)" Margin="0,8,0,0"

@@ -22,15 +22,12 @@ namespace scs
     {
         const char* const HeldMessage = "Paused — press START to resume, switch to MANUAL to abort cycle";
 
+        /// Thời gian phanh Z đóng hẳn trước khi tắt servo. Phỏng đoán — chỉnh theo datasheet phanh khi có máy.
+        constexpr int ZBrakeEngageMs = 100;
+
         void Log(const std::string& msg, LogLevel level, const char* source = "McControl")
         {
             LogWorker::Instance().RecordLog(msg, level, source);
-        }
-
-        std::string ReplaceNewLines(std::string text)
-        {
-            for (size_t p = 0; (p = text.find("\r\n", p)) != std::string::npos; p += 3) text.replace(p, 2, " | ");
-            return text;
         }
 
         struct State
@@ -55,6 +52,9 @@ namespace scs
 
             // Yêu cầu từ UI / nút cứng — cờ một lần, vòng quét đọc rồi xoá.
             std::atomic<int> reqStart{ 0 }, reqStop{ 0 }, reqPause{ 0 }, reqReset{ 0 }, reqOrigin{ 0 }, reqInit{ 0 }, reqMute{ 0 }, reqArm{ 0 };
+
+            /// ServoOff đang đóng phanh Z trước khi tắt servo — vòng quét không được nhả lại trong lúc đó.
+            std::atomic<bool> zBrakeHold{ false };
 
             /// Chế độ Auto/Manual đặt bằng phần mềm (nút trên trang Main). Trạng thái BỀN, vòng quét chỉ
             /// đọc ra so với Status.Mode.
@@ -289,9 +289,8 @@ namespace scs
         {
             // Nút cứng bắt SƯỜN LÊN, không bắt mức — nút kẹt hoặc dính tiếp điểm mà bắt theo mức sẽ khiến máy
             // tự khởi động lại liên tục.
-            if (s.io->RisingEdge(IoMap::BtnStart)) RequestStart();
+            if (s.io->RisingEdge(IoMap::BtnStart) || s.io->RisingEdge(IoMap::BtnStart2)) RequestStart();
             if (s.io->RisingEdge(IoMap::BtnStop)) RequestStop();
-            if (s.io->RisingEdge(IoMap::BtnReset)) RequestReset();
 
             if (s.reqReset.exchange(0) == 1) DoReset(s);
             if (s.reqMute.exchange(0) == 1) s.status.SetBuzzerMuted(true);
@@ -718,9 +717,9 @@ namespace scs
             bool yellow = lamp == ETowerLamp::Yellow || (lamp == ETowerLamp::YellowBlink && blinkSlow);
             bool green = lamp == ETowerLamp::Green || (lamp == ETowerLamp::GreenBlink && blinkSlow);
 
-            io.SetDo(IoMap::DoLampRed, red);
-            io.SetDo(IoMap::DoLampYellow, yellow);
-            io.SetDo(IoMap::DoLampGreen, green);
+            io.SetDo(IoMap::DoTowerLampRed, red);
+            io.SetDo(IoMap::DoTowerLampYellow, yellow);
+            io.SetDo(IoMap::DoTowerLampGreen, green);
 
             bool wantBuzzer = AlarmManager::HasError();
             if (!wantBuzzer) status.SetBuzzerMuted(false);   // alarm mới sẽ lại kêu
@@ -732,11 +731,16 @@ namespace scs
             EMcState st = status.State();
             bool running = st == EMcState::Running || st == EMcState::Pausing;
             bool waitStart = st == EMcState::Armed || st == EMcState::Held || s.autoR->WaitingTray;
-            io.SetDo(IoMap::DoLampStartBtn, running || (waitStart && blinkSlow));
+            bool startLamp = running || (waitStart && blinkSlow);
+            io.SetDo(IoMap::DoLampStartBtn, startLamp);
+            io.SetDo(IoMap::DoLampStartBtn2, startLamp);
             // Đèn STOP: sáng khi trục KHÔNG chạy — kể cả lúc chờ người vận hành thay tray.
             io.SetDo(IoMap::DoLampStopBtn, !running);
-            // Đèn RESET: sáng khi còn alarm.
-            io.SetDo(IoMap::DoLampResetBtn, AlarmManager::ActiveCount() > 0);
+
+            // Phanh Z: chỉ nhả khi servo Z đang đỡ trục. Mất servo vì EMG/lỗi driver/mất kết nối thì đóng ở vòng quét kế
+            // tiếp; tắt servo chủ động thì ServoOff đóng phanh TRƯỚC khi tắt.
+            auto z = s.motion.Axis(AxisId::Z);
+            io.SetDo(IoMap::ZAxisBrakeRelease, z && z->IsConnected() && z->ServoOn() && !z->Alarm() && !s.zBrakeHold.load());
         }
 
         /// Chờ routine đang chạy thoát rồi JOIN luồng của nó.
@@ -761,8 +765,6 @@ namespace scs
     std::shared_ptr<McFunction> McControl::Func() { auto& s = St(); std::lock_guard<std::mutex> l(s.devMutex); return s.func; }
     std::shared_ptr<Routine_Auto> McControl::AutoRoutine() { auto& s = St(); std::lock_guard<std::mutex> l(s.devMutex); return s.autoR; }
     std::shared_ptr<Routine_Calib> McControl::Calib() { auto& s = St(); std::lock_guard<std::mutex> l(s.devMutex); return s.calib; }
-    double McControl::CurrentCycleSec() { auto a = AutoRoutine(); return a ? a->CurrentCycleSec() : 0; }
-    int McControl::CurrentCycleProducts() { auto a = AutoRoutine(); return a ? a->CurrentCycleProducts() : 0; }
     base::Event<std::string>& McControl::AutoModeRefused() { return St().autoModeRefused; }
     bool McControl::IsInitialized() { return St().initialized.load(); }
     int McControl::VisionLoadCount() { return St().visionLoadCount.load(); }
@@ -795,10 +797,108 @@ namespace scs
         }
         auto run = McDataManager::RunData();
         run->ResetTrays();
+        for (auto& tray : run->Trays) tray.ClearSelection();
         McDataManager::SaveRunningData();
+        Routine_Auto::ClearTrayView();
         s.status.SetMessage("Tray progress reset — next cycle starts from row 1 of tray 1");
         Log("Tray progress reset by operator", LogLevel::Info);
         return {};
+    }
+
+    bool McControl::CellSelectionLocked()
+    {
+        State& s = St();
+        return RoutineBusy() && !(s.autoR && s.autoR->WaitingTray);
+    }
+
+    bool McControl::CanSelectCells()
+    {
+        return St().status.Mode() == EMcMode::Auto && !CellSelectionLocked();
+    }
+
+    namespace
+    {
+        int TrayCellCount()
+        {
+            auto model = McDataManager::Model();
+            return model ? std::max(1, model->Auto.TrayRows) * IoMap::NozzleCount : 0;
+        }
+
+        bool ValidCell(int tray, int cell)
+        {
+            return tray >= 0 && tray < IoMap::TrayCount && cell >= 0 && cell < TrayCellCount();
+        }
+
+        /// Lý do ô không chọn được; rỗng = chọn được.
+        std::string CellSelectProblem(int tray, int cell)
+        {
+            auto run = McDataManager::RunData();
+            auto sys = McDataManager::SysData();
+            auto io = McControl::Io();
+            auto present = [&](int t) { return !sys->HasTraySensors || (io && io->GetDi(IoMap::TrayPresent(t + 1))); };
+            if (!present(tray))
+                return std::format("Tray {} not detected ({}) — cannot select its cells", tray + 1, IoMap::DiLabel(IoMap::TrayPresent(tray + 1)));
+            const int cells = TrayCellCount();
+            bool allDone = true;
+            for (int t = 0; t < IoMap::TrayCount; ++t)
+                allDone = allDone && (!present(t) || run->Trays[(size_t)t].DoneCount(cells) >= cells);
+            if (run->Trays[(size_t)tray].IsDone(cell) && !allDone)
+                return std::format("Tray {} cell {}-{} already run — RESET TRAY to run it again", tray + 1,
+                                   cell / IoMap::NozzleCount + 1, cell % IoMap::NozzleCount + 1);
+            return {};
+        }
+    }
+
+    bool McControl::CanSelectCell(int tray, int cell)
+    {
+        return ValidCell(tray, cell) && CellSelectProblem(tray, cell).empty();
+    }
+
+    void McControl::ToggleCellSelection(int tray, int cell)
+    {
+        auto run = McDataManager::RunData();
+        if (!run || !ValidCell(tray, cell) || !CanSelectCells()) return;
+        TrayCells& book = run->Trays[(size_t)tray];
+        if (!book.IsSelected(cell))
+        {
+            std::string why = CellSelectProblem(tray, cell);
+            if (!why.empty())
+            {
+                St().status.SetMessage(why);
+                return;
+            }
+        }
+        book.Toggle(cell);
+    }
+
+    void McControl::SetCellsSelected(int tray, const std::vector<int>& cells, bool on)
+    {
+        auto run = McDataManager::RunData();
+        if (!run || tray < 0 || tray >= IoMap::TrayCount || !CanSelectCells()) return;
+        TrayCells& book = run->Trays[(size_t)tray];
+        if (!on)
+        {
+            book.SetSelected(cells, false);
+            return;
+        }
+        std::vector<int> ok;
+        std::string why;
+        for (int cell : cells)
+        {
+            if (!ValidCell(tray, cell)) continue;
+            std::string problem = CellSelectProblem(tray, cell);
+            if (problem.empty()) ok.push_back(cell);
+            else if (why.empty()) why = std::move(problem);
+        }
+        if (ok.empty() && !why.empty()) St().status.SetMessage(why);
+        book.SetSelected(ok, true);
+    }
+
+    void McControl::ClearCellSelection()
+    {
+        if (CellSelectionLocked()) return;
+        if (auto run = McDataManager::RunData())
+            for (auto& tray : run->Trays) tray.ClearSelection();
     }
 
     ETowerLamp McControl::ComputeLamp()
@@ -848,14 +948,12 @@ namespace scs
         std::shared_ptr<IIoDevice> io;
         if (sys->SimulationMode) io = std::make_shared<FakeIo>();
         else io = std::make_shared<EtherCatIoDevice>([] { return McDataManager::SysData()->IoModule; }, s.motion.Bus());
-        // VisionConnect tự giữ FakeVision khi mô phỏng VÀ chọn vision giả (hoặc app không đăng ký VisionMaster thật) —
-        // đã gắn tên Flow/biến; Connect() dựng kho biến giả.
+        // VisionConnect tự giữ FakeVision khi mô phỏng VÀ chọn vision giả (hoặc app không đăng ký VisionMaster thật).
         auto vision = std::make_shared<VisionConnect>(sys);
         if (auto fake = vision->Fake())
         {
             // Như bản C#: đọc lại McDataManager::SysData() mỗi lần (VisionConnect gắn sẵn bản chụp lúc tạo).
             fake->SetNames([] { return McDataManager::SysData()->VisionOutputs; });
-            fake->SetFlowOutputSource([](const std::string& flow) { return VmCycle::FakeFlowOutputs(flow, McDataManager::SysData()->VisionOutputs); });
         }
 
         auto safety = std::make_shared<SafetyMonitor>(s.motion, s.status, sysFn);
@@ -920,6 +1018,18 @@ namespace scs
         return err.empty() ? std::string("cannot open EtherCAT bus") : err;
     }
 
+    bool McControl::ServoOff(const std::shared_ptr<IAxis>& axis)
+    {
+        if (axis->Name() != AxisId::Z || !axis->ServoOn()) return axis->SetServoOn(false);
+
+        State& s = St();
+        struct Release { State& s; ~Release() { s.zBrakeHold = false; } } release{ s };
+        s.zBrakeHold = true;
+        if (auto io = Io()) io->SetDo(IoMap::ZAxisBrakeRelease, false);
+        base::Delay(ZBrakeEngageMs);
+        return axis->SetServoOn(false);
+    }
+
     std::string McControl::DisconnectEtherCat()
     {
         State& s = St();
@@ -933,7 +1043,7 @@ namespace scs
         {
             std::vector<std::function<bool()>> jobs;
             for (const auto& a : s.motion.AxisList())
-                if (a->ServoOn()) jobs.push_back([a] { return a->SetServoOn(false); });
+                if (a->ServoOn()) jobs.push_back([a] { return ServoOff(a); });
             if (!jobs.empty()) base::WhenAll(std::move(jobs));
         }
         catch (...) { }
@@ -953,46 +1063,16 @@ namespace scs
         return {};
     }
 
-    GlobalVarSyncReport McControl::SyncVisionGlobalVariables(bool apply)
+    std::string McControl::CheckInspectionPath()
     {
         auto vision = Vision();
-        if (!vision || !vision->IsSolutionLoaded())
-            return GlobalVarSyncReport::Fail("Vision solution not loaded");
-        if (apply && RoutineBusy())
-            return GlobalVarSyncReport::Fail("cycle running — stop fully before creating variables");
-
-        auto specs = VisionGlobalVarCatalog::Build(McDataManager::SysData().get());
-        auto report = vision->SyncGlobalVariables(specs, apply);
-
-        bool bad = !report.Error.empty() || report.Count(EGlobalVarState::Failed) > 0 ||
-                   report.Count(EGlobalVarState::WrongType) > 0 || report.Count(EGlobalVarState::InvalidName) > 0;
-        Log((apply ? "Create global variables: " : "Check global variables: ") + ReplaceNewLines(report.ToText()),
-            bad ? LogLevel::Warning : LogLevel::Info, "Vision");
-        return report;
-    }
-
-    VmOutCheckReport McControl::CheckVisionFlowOutputs()
-    {
-        auto vision = Vision();
-        if (!vision || !vision->IsSolutionLoaded())
-            return VmOutCheckReport::Fail("Vision solution not loaded");
-
-        VisionOutputNames names = McDataManager::SysData()->VisionOutputs;
-        auto scripts = VmScriptContract::Build(names);
-
-        VmOutCheckReport report;
-        for (const auto& expect : VmCycle::ExpectedFlowOutputs(names))
-        {
-            VmFlowOutputs actual = vision->ReadFlowOutputs(expect.Flow);
-            VmOutCheck::CompareFlow(expect, &actual, report);
-
-            for (const auto& sc : scripts)
-                if (sc.Flow == expect.Flow) VmOutCheck::CompareScript(sc, &actual, report);
-        }
-
-        Log("Check Flow outputs: " + ReplaceNewLines(report.ToText()),
-            report.Clean() ? LogLevel::Info : LogLevel::Warning, "Vision");
-        return report;
+        if (!vision || !vision->IsSolutionLoaded()) return "Vision solution not loaded";
+        const auto names = McDataManager::SysData()->VisionOutputs;
+        std::string why = names.InspectPathProblem();
+        if (why.empty()) why = vision->CheckModulePath(names.InspectPath);
+        Log("Check inspection path " + names.InspectPath + ": " + (why.empty() ? std::string("OK") : why),
+            why.empty() ? LogLevel::Info : LogLevel::Warning, "Vision");
+        return why;
     }
 
     void McControl::Shutdown()
@@ -1026,7 +1106,7 @@ namespace scs
             try
             {
                 std::vector<std::function<bool()>> jobs;
-                for (const auto& a : s.motion.AxisList()) jobs.push_back([a] { return a->SetServoOn(false); });
+                for (const auto& a : s.motion.AxisList()) jobs.push_back([a] { return ServoOff(a); });
                 if (!jobs.empty()) base::WhenAll(std::move(jobs));
             }
             catch (...) { }

@@ -5,10 +5,11 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:local="using:ShieldCanLaser">
 
-    <!-- Trang Vision Edit — máy Laser Marking: thanh jog 3 trục, khung chỉnh Flow của VisionMaster (trái) và cột hiệu chuẩn
-         (phải, PLAN-LASER.md §4.2). Cột hiệu chuẩn: chọn nozzle → chọn bước trên thanh bước ngang (vòng ✓ xanh = đã xong)
-         → khung của bước → một dòng kết quả ở đáy. Ba bước: Lưới X × Z (dùng chung), SET MASTER từng nozzle, Thử laser từng
-         nozzle. Giải thích dài nằm trong tooltip. Mọi nút làm trục chạy / kích laser: BẤM ĐÚP (như cả app). -->
+    <!-- Trang Vision Edit — máy Laser Marking: thanh jog 3 trục, khung chỉnh Flow của VisionMaster (trái) và cột thử (phải,
+         PLAN-LASER.md §4). Vision chỉ kiểm tra sau khi khắc, không hiệu chuẩn camera. Cột thử: chọn nozzle → chọn bước trên
+         thanh bước ngang → khung của bước → một dòng kết quả ở đáy. Hai bước: Thử khắc (tới điểm khắc, TEST MARK, trim) và
+         Kiểm tra (tới CAM, chạy Flow, xem Result). Giải thích dài nằm trong tooltip. Mọi nút làm trục chạy / kích laser: BẤM
+         ĐÚP (như cả app). -->
     <UserControl.Resources>
         <!-- Một ô của thanh bước ngang: nền trong suốt (vạch nối các vòng số lộ ra), ô đang chọn tô nhạt. -->
         <Style x:Key="StepTabStyle" TargetType="Button" BasedOn="{StaticResource FlatButtonStyle}">
@@ -195,7 +196,7 @@
             </Grid>
         </Border>
 
-        <!-- ══════════ Cột phải: hiệu chuẩn ══════════ -->
+        <!-- ══════════ Cột phải: thử khắc và kiểm tra ══════════ -->
         <Border Grid.Row="1" Grid.Column="1" Style="{StaticResource CardBorderStyle}" Padding="0">
             <Grid>
                 <Grid.RowDefinitions>
@@ -208,52 +209,34 @@
                     <RowDefinition Height="Auto"/>
                 </Grid.RowDefinitions>
 
-                <!-- Tiêu đề + chip cổng Auto (tooltip = lý do chặn đầy đủ). -->
                 <Border Style="{StaticResource CardHeaderStyle}">
-                    <Grid>
-                        <TextBlock Text="Calibration" Style="{StaticResource SectionHeaderStyle}"/>
-                        <Border x:Name="GateChip" HorizontalAlignment="Right" VerticalAlignment="Center" CornerRadius="11"
-                                Padding="10,3" Background="{StaticResource CautionBackgroundBrush}">
-                            <StackPanel Orientation="Horizontal" Spacing="6">
-                                <Ellipse x:Name="GateDot" Width="8" Height="8" VerticalAlignment="Center" Fill="{StaticResource CautionBrush}"/>
-                                <TextBlock x:Name="GateText" Text="Not ready" FontSize="12" FontWeight="SemiBold"
-                                           Foreground="{StaticResource CautionBrush}" VerticalAlignment="Center"/>
-                            </StackPanel>
-                        </Border>
-                    </Grid>
+                    <TextBlock Text="Laser &amp; Inspection Trial" Style="{StaticResource SectionHeaderStyle}"/>
                 </Border>
                 <Border Grid.Row="1" Style="{StaticResource DividerStyle}"/>
 
-                <!-- Chọn nozzle (chấm: xanh = master đã đặt) + thanh bước ngang: vòng ✓ xanh = đã xong. Nozzle đang chọn cũng là
-                     nozzle ngậm can mẫu của bước lưới (VisionCalibSettings::CalibNozzle). -->
+                <!-- Chọn nozzle (chấm: xanh = lần kiểm tra gần nhất OK, đỏ = NG, xám = chưa kiểm tra) + thanh bước ngang. -->
                 <StackPanel x:Name="NavPanel" Grid.Row="2" Margin="12,10,12,6" Spacing="8">
                     <StackPanel x:Name="NozzleRow" Orientation="Horizontal" Spacing="4">
                         <TextBlock Text="Nozzle" Style="{StaticResource FieldTextStyle}" Width="42"/>
                     </StackPanel>
 
                     <Grid>
-                        <Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition/><ColumnDefinition/></Grid.ColumnDefinitions>
-                        <!-- Vạch nối tâm vòng đầu tới tâm vòng cuối (1/6 bề rộng mỗi bên); nằm sau các nút. -->
-                        <Grid Grid.ColumnSpan="3" VerticalAlignment="Top" Margin="0,19,0,0">
-                            <Grid.ColumnDefinitions><ColumnDefinition Width="1*"/><ColumnDefinition Width="4*"/><ColumnDefinition Width="1*"/></Grid.ColumnDefinitions>
+                        <Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition/></Grid.ColumnDefinitions>
+                        <!-- Vạch nối tâm vòng đầu tới tâm vòng cuối (1/4 bề rộng mỗi bên); nằm sau các nút. -->
+                        <Grid Grid.ColumnSpan="2" VerticalAlignment="Top" Margin="0,19,0,0">
+                            <Grid.ColumnDefinitions><ColumnDefinition Width="1*"/><ColumnDefinition Width="2*"/><ColumnDefinition Width="1*"/></Grid.ColumnDefinitions>
                             <Border Grid.Column="1" Height="1" Background="{StaticResource ControlStrokeSecondaryBrush}"/>
                         </Grid>
                         <Button x:Name="StepButton0" Grid.Column="0" Tag="0" Style="{StaticResource StepTabStyle}" Click="OnStepClick">
                             <StackPanel Spacing="4">
                                 <Border x:Name="StepBadge0" Style="{StaticResource StepBadgeStyle}"><TextBlock x:Name="StepBadgeText0" Text="1" Style="{StaticResource StepBadgeTextStyle}"/></Border>
-                                <TextBlock x:Name="StepLabel0" Text="Grid X × Z" Style="{StaticResource StepLabelStyle}"/>
+                                <TextBlock x:Name="StepLabel0" Text="Laser trial" Style="{StaticResource StepLabelStyle}"/>
                             </StackPanel>
                         </Button>
                         <Button x:Name="StepButton1" Grid.Column="1" Tag="1" Style="{StaticResource StepTabStyle}" Click="OnStepClick">
                             <StackPanel Spacing="4">
                                 <Border x:Name="StepBadge1" Style="{StaticResource StepBadgeStyle}"><TextBlock x:Name="StepBadgeText1" Text="2" Style="{StaticResource StepBadgeTextStyle}"/></Border>
-                                <TextBlock x:Name="StepLabel1" Text="Master" Style="{StaticResource StepLabelStyle}"/>
-                            </StackPanel>
-                        </Button>
-                        <Button x:Name="StepButton2" Grid.Column="2" Tag="2" Style="{StaticResource StepTabStyle}" Click="OnStepClick">
-                            <StackPanel Spacing="4">
-                                <Border x:Name="StepBadge2" Style="{StaticResource StepBadgeStyle}"><TextBlock x:Name="StepBadgeText2" Text="3" Style="{StaticResource StepBadgeTextStyle}"/></Border>
-                                <TextBlock x:Name="StepLabel2" Text="Laser trial" Style="{StaticResource StepLabelStyle}"/>
+                                <TextBlock x:Name="StepLabel1" Text="Inspection" Style="{StaticResource StepLabelStyle}"/>
                             </StackPanel>
                         </Button>
                     </Grid>
@@ -264,95 +247,18 @@
                 <ScrollViewer Grid.Row="4" VerticalScrollBarVisibility="Auto">
                     <Grid x:Name="StepHost" Margin="12,10,18,12">
 
-                        <!-- 1 · Lưới 9 điểm X × Z (dùng chung — một camera) -->
+                        <!-- 1 · Thử khắc (nozzle đang chọn): điểm Laser(k) + trim, không bù độ lệch can -->
                         <StackPanel x:Name="StepPanel0" Spacing="10">
-                            <Grid>
-                                <TextBlock x:Name="GridTitle" Text="Grid X × Z · nozzle 1" Style="{StaticResource StepTitleStyle}"/>
-                                <TextBlock x:Name="StepStatus0" Style="{StaticResource StepStatusStyle}"/>
-                            </Grid>
-                            <Grid ColumnSpacing="8">
-                                <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
-                                <TextBlock Text="Center" Style="{StaticResource FieldTextStyle}"/>
-                                <TextBlock x:Name="CenterText" Grid.Column="1" Style="{StaticResource ValueTextStyle}"/>
-                                <Button Grid.Column="2" Content="SET CENTER" Click="OnSaveCenterClick"
-                                        ToolTipService.ToolTip="Jog the master can (held on the selected nozzle) to image center, then click — saves current X, Z as point 5"/>
-                            </Grid>
-                            <StackPanel Orientation="Horizontal" Spacing="8">
-                                <TextBlock Text="Step X" Style="{StaticResource FieldTextStyle}"/>
-                                <TextBox x:Name="GridStepXBox" Style="{StaticResource NumBoxStyle}" Width="64" LostFocus="OnInputLostFocus"/>
-                                <TextBlock Text="Z" Style="{StaticResource FieldTextStyle}" Margin="6,0,0,0"/>
-                                <TextBox x:Name="GridStepZBox" Style="{StaticResource NumBoxStyle}" Width="64" LostFocus="OnInputLostFocus"/>
-                                <TextBlock Text="mm" Style="{StaticResource FieldTextStyle}"/>
-                                <TextBlock Text="Shots" Style="{StaticResource FieldTextStyle}" Margin="10,0,0,0"/>
-                                <TextBox x:Name="ShotsBox" Style="{StaticResource NumBoxStyle}" Width="48" LostFocus="OnInputLostFocus"
-                                         ToolTipService.ToolTip="Images averaged per measurement (verify grid, set master)"/>
-                            </StackPanel>
-                            <Grid ColumnSpacing="12">
-                                <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
-                                <!-- Numpad: 7 8 9 trên, 1 2 3 dưới; 5 = tâm. Bấm đúp = chạy tới điểm đó rồi nạp MỘT điểm. -->
-                                <Grid x:Name="Numpad" RowSpacing="4" ColumnSpacing="4">
-                                    <Grid.RowDefinitions><RowDefinition/><RowDefinition/><RowDefinition/></Grid.RowDefinitions>
-                                    <Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition/><ColumnDefinition/></Grid.ColumnDefinitions>
-                                </Grid>
-                                <StackPanel Grid.Column="1" Spacing="6" VerticalAlignment="Center">
-                                    <Button x:Name="RunGridButton" Content="RUN 9-PT" Style="{StaticResource PrimaryButton}" HorizontalAlignment="Stretch"
-                                            DoubleTapped="OnRunGridDoubleTapped" ToolTipService.ToolTip="Double-click: auto Clear Point on LocateCan N-Point module, then run 9 points in S-pattern, one point loaded each"/>
-                                    <Button Content="CAPTURE" HorizontalAlignment="Stretch" Click="OnCaptureHereClick"
-                                            ToolTipService.ToolTip="Trigger LocateCan calibration branch here — ADDS one point, keeps existing points"/>
-                                </StackPanel>
-                            </Grid>
-                            <Border Style="{StaticResource InsetDividerStyle}" Margin="0,2"/>
-                            <Grid ColumnSpacing="8">
-                                <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
-                                <TextBlock Text="Travel" Style="{StaticResource FieldTextStyle}"/>
-                                <TextBox x:Name="VerifyStepBox" Grid.Column="1" Style="{StaticResource NumBoxStyle}" Width="56" LostFocus="OnInputLostFocus"
-                                         ToolTipService.ToolTip="mm moved on X then Z during VERIFY GRID"/>
-                                <TextBlock Grid.Column="2" Text="Tol" Style="{StaticResource FieldTextStyle}"/>
-                                <TextBox x:Name="ResidualTolBox" Grid.Column="3" Style="{StaticResource NumBoxStyle}" Width="56" LostFocus="OnInputLostFocus"
-                                         ToolTipService.ToolTip="mm — Rel (= object − encoder) must stay within this while the axes move"/>
-                                <Button Grid.Column="4" Content="VERIFY GRID" HorizontalAlignment="Stretch" DoubleTapped="OnVerifyGridDoubleTapped"
-                                        ToolTipService.ToolTip="Double-click: locate the can on the nozzle, move X then Z by the travel, locate again — Rel must not change. Pass is saved to model."/>
-                            </Grid>
-                        </StackPanel>
-
-                        <!-- 2 · SET MASTER (nozzle đang chọn) -->
-                        <StackPanel x:Name="StepPanel1" Spacing="10" Visibility="Collapsed">
-                            <Grid ColumnSpacing="8">
-                                <TextBlock x:Name="MasterTitle" Text="Master · nozzle 1" Style="{StaticResource StepTitleStyle}"/>
-                                <TextBlock x:Name="StepStatus1" Style="{StaticResource StepStatusStyle}"/>
-                            </Grid>
-                            <TextBlock Style="{StaticResource HintStyle}" Margin="0"
-                                       Text="Vacuum a correctly seated master can onto the nozzle (Manual page)."/>
-                            <Grid ColumnSpacing="6">
-                                <Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition/></Grid.ColumnDefinitions>
-                                <Button Content="GO TO CAM" HorizontalAlignment="Stretch" DoubleTapped="OnGoToCamDoubleTapped"
-                                        ToolTipService.ToolTip="Double-click: X/Z to the CAM point of this nozzle (interpolated from CAM · N1 / N7)"/>
-                                <Button Grid.Column="1" Content="CAPTURE" HorizontalAlignment="Stretch" Click="OnCaptureClick"
-                                        ToolTipService.ToolTip="One image here — shows Rel and the deviation vs. master; GO TO LASER uses this reading"/>
-                            </Grid>
-                            <Button Content="SET MASTER" Style="{StaticResource PrimaryButton}" HorizontalAlignment="Stretch"
-                                    DoubleTapped="OnSetMasterDoubleTapped"
-                                    ToolTipService.ToolTip="Double-click: go to CAM point, average N images, save Ref of this nozzle to model (clears its trim)"/>
-                            <TextBlock x:Name="MasterStatusText" Style="{StaticResource ValueTextStyle}" Foreground="{StaticResource TextSecondaryBrush}"/>
-                            <TextBlock x:Name="LastReadText" Style="{StaticResource ValueTextStyle}" Foreground="{StaticResource TextSecondaryBrush}"/>
-                            <Border Style="{StaticResource InsetDividerStyle}" Margin="0,2"/>
-                            <TextBlock Text="All nozzles" Style="{StaticResource SubHeaderStyle}" Margin="0"/>
-                            <!-- 7 dòng: N · master (Ref X/Z, lúc nào) · trim — dựng trong code. -->
-                            <StackPanel x:Name="NozzleSummary" Spacing="2"/>
-                        </StackPanel>
-
-                        <!-- 3 · Thử laser (nozzle đang chọn) -->
-                        <StackPanel x:Name="StepPanel2" Spacing="10" Visibility="Collapsed">
                             <Grid ColumnSpacing="8">
                                 <TextBlock x:Name="LaserTitle" Text="Laser trial · nozzle 1" Style="{StaticResource StepTitleStyle}"/>
-                                <TextBlock x:Name="StepStatus2" Style="{StaticResource StepStatusStyle}"/>
+                                <TextBlock x:Name="StepStatus0" Style="{StaticResource StepStatusStyle}"/>
                             </Grid>
                             <Grid ColumnSpacing="6">
                                 <Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition/></Grid.ColumnDefinitions>
                                 <Button Content="GO TO LASER" HorizontalAlignment="Stretch" DoubleTapped="OnGoToLaserDoubleTapped"
-                                        ToolTipService.ToolTip="Double-click: X/Z to Laser point of this nozzle + trim + compensation from the last CAPTURE (no capture → no compensation). Does not fire."/>
+                                        ToolTipService.ToolTip="Double-click: X/Z to the Laser point of this nozzle + trim. Does not fire."/>
                                 <Button Grid.Column="1" Content="TEST MARK" HorizontalAlignment="Stretch" DoubleTapped="OnTestMarkDoubleTapped"
-                                        ToolTipService.ToolTip="Double-click: pulse the laser trigger output here for MarkTimeMs (model)"/>
+                                        ToolTipService.ToolTip="Double-click: pulse the laser start output here for MarkTimeMs (model)"/>
                             </Grid>
                             <TextBlock x:Name="LaserStatusText" Style="{StaticResource ValueTextStyle}" Foreground="{StaticResource TextSecondaryBrush}"/>
                             <Border Style="{StaticResource InsetDividerStyle}" Margin="0,2"/>
@@ -365,23 +271,31 @@
                                 <TextBox x:Name="TrimXBox" Grid.Row="1" Style="{StaticResource NumBoxStyle}" Width="Auto"/>
                                 <TextBox x:Name="TrimZBox" Grid.Row="1" Grid.Column="1" Style="{StaticResource NumBoxStyle}" Width="Auto"/>
                                 <Button Grid.Row="1" Grid.Column="2" Content="APPLY" Click="OnApplyTrimClick"
-                                        ToolTipService.ToolTip="Offset added to the Laser point of this nozzle; max ±1 mm. SET MASTER clears trim."/>
+                                        ToolTipService.ToolTip="Offset added to the Laser point of this nozzle; max ±1 mm. Saved to the model."/>
                             </Grid>
                             <Border Style="{StaticResource InsetDividerStyle}" Margin="0,2"/>
-                            <TextBlock Text="Compensation (system)" Style="{StaticResource SubHeaderStyle}" Margin="0"/>
-                            <Grid ColumnSpacing="6" RowSpacing="4">
-                                <Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition/><ColumnDefinition/></Grid.ColumnDefinitions>
-                                <Grid.RowDefinitions><RowDefinition/><RowDefinition/></Grid.RowDefinitions>
-                                <TextBlock Text="Gain X" Style="{StaticResource FieldTextStyle}" FontSize="12"/>
-                                <TextBlock Grid.Column="1" Text="Gain Z" Style="{StaticResource FieldTextStyle}" FontSize="12"/>
-                                <TextBlock Grid.Column="2" Text="Max mm" Style="{StaticResource FieldTextStyle}" FontSize="12"/>
-                                <TextBox x:Name="GainXBox" Grid.Row="1" Style="{StaticResource NumBoxStyle}" Width="Auto" LostFocus="OnInputLostFocus"
-                                         ToolTipService.ToolTip="X_target = Laser.X + TrimX + GainX · dX (default −1)"/>
-                                <TextBox x:Name="GainZBox" Grid.Row="1" Grid.Column="1" Style="{StaticResource NumBoxStyle}" Width="Auto" LostFocus="OnInputLostFocus"
-                                         ToolTipService.ToolTip="Z_target = Laser.Z + TrimZ + GainZ · dZ (default −1)"/>
-                                <TextBox x:Name="MaxCompBox" Grid.Row="1" Grid.Column="2" Style="{StaticResource NumBoxStyle}" Width="Auto" LostFocus="OnInputLostFocus"
-                                         ToolTipService.ToolTip="|dX| or |dZ| above this → cell NG, not marked (alarm 5004)"/>
+                            <TextBlock Text="All nozzles" Style="{StaticResource SubHeaderStyle}" Margin="0"/>
+                            <!-- 7 dòng: N · trim · kết quả kiểm tra gần nhất — dựng trong code. -->
+                            <StackPanel x:Name="NozzleSummary" Spacing="2"/>
+                        </StackPanel>
+
+                        <!-- 2 · Kiểm tra (nozzle đang chọn): tới CAM, chạy Flow, đọc Result của Group -->
+                        <StackPanel x:Name="StepPanel1" Spacing="10" Visibility="Collapsed">
+                            <Grid ColumnSpacing="8">
+                                <TextBlock x:Name="InspectTitle" Text="Inspection · nozzle 1" Style="{StaticResource StepTitleStyle}"/>
+                                <TextBlock x:Name="StepStatus1" Style="{StaticResource StepStatusStyle}"/>
                             </Grid>
+                            <TextBlock Style="{StaticResource HintStyle}" Margin="0"
+                                       Text="Vacuum a marked can onto the nozzle (Manual page). INSPECT runs the Flow and reads Result of the Group: 1 = OK, anything else = NG."/>
+                            <Grid ColumnSpacing="6">
+                                <Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition/></Grid.ColumnDefinitions>
+                                <Button Content="GO TO CAM" HorizontalAlignment="Stretch" DoubleTapped="OnGoToCamDoubleTapped"
+                                        ToolTipService.ToolTip="Double-click: X/Z to the CAM point of this nozzle (interpolated from CAM · N1 / N7)"/>
+                                <Button Grid.Column="1" Content="INSPECT" Style="{StaticResource PrimaryButton}" HorizontalAlignment="Stretch" Click="OnInspectClick"
+                                        ToolTipService.ToolTip="Run the inspection Flow here (CAM light on) and read Result of the Group"/>
+                            </Grid>
+                            <TextBlock x:Name="InspectPathText" Style="{StaticResource ValueTextStyle}" Foreground="{StaticResource TextSecondaryBrush}"/>
+                            <TextBlock x:Name="LastInspectText" Style="{StaticResource ValueTextStyle}"/>
                         </StackPanel>
                     </Grid>
                 </ScrollViewer>

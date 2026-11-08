@@ -29,8 +29,8 @@ namespace scs
         S00_Ready = 0,
         S10_WaitStart = 10,      // chờ START (đã có tray)
         S20_PickRow = 20,        // gắp một hàng 7 Shield CAN
-        S30_Vision = 30,         // CAM soi từng nozzle, đo độ lệch
-        S40_Laser = 40,          // khắc từng nozzle, bù X/Z + góc
+        S30_Laser = 30,          // khắc từng nozzle tại điểm Laser(k) + Trim
+        S40_Inspect = 40,        // CAM kiểm tra từng can vừa khắc
         S50_PlaceRow = 50,       // trả hàng về đúng ô tray
         S60_WaitTray = 60        // hết 2 tray — chờ thay tray rồi bấm START
     };
@@ -75,8 +75,8 @@ namespace scs
             case EAutoState::S00_Ready:     return "S00_Ready";
             case EAutoState::S10_WaitStart: return "S10_WaitStart";
             case EAutoState::S20_PickRow:   return "S20_PickRow";
-            case EAutoState::S30_Vision:    return "S30_Vision";
-            case EAutoState::S40_Laser:     return "S40_Laser";
+            case EAutoState::S30_Laser:     return "S30_Laser";
+            case EAutoState::S40_Inspect:   return "S40_Inspect";
             case EAutoState::S50_PlaceRow:  return "S50_PlaceRow";
             case EAutoState::S60_WaitTray:  return "S60_WaitTray";
         }

@@ -14,9 +14,9 @@ namespace scs
     struct VisionCmdGate;   // khoá lệnh, sống lâu hơn VisionConnect khi còn một lần Run bị bỏ dở
 
     /// <summary>
-    /// Camera CAM qua HIKROBOT VisionMaster 4.4.0. Tên Flow/output đọc từ <see cref="SystemData::VisionOutputs"/> (cấu
-    /// hình được, không hardcode) — đó cũng là hợp đồng cần khớp khi dựng solution trong VisionMaster IDE
-    /// (PLAN-LASER.md §4.1).
+    /// Camera CAM qua HIKROBOT VisionMaster 4.4.0 — kiểm tra can sau khi khắc. Đường dẫn Flow.Group đọc từ
+    /// <see cref="SystemData::VisionOutputs"/> (cấu hình được, không hardcode) — đó cũng là hợp đồng cần khớp khi dựng
+    /// solution trong VisionMaster IDE (PLAN-LASER.md §4).
     ///
     /// <para>Lớp này KHÔNG biết SDK VisionMaster. Thiết bị thật là một <see cref="IVisionDevice"/> "thô" do
     /// hàm tạo đăng ký ở <see cref="SetRealDeviceFactory"/> cấp; VisionConnect bọc nó: kiểm trạng thái + thông báo, khoá
@@ -53,36 +53,19 @@ namespace scs
         /// <summary>
         /// PlatformSDK không có bước "connect" tách rời khỏi nạp solution — kết nối camera thật diễn ra bên
         /// trong <c>LoadSolution</c>. Cờ này chỉ đánh dấu "sẵn sàng gọi nạp solution", đúng thứ tự
-        /// <c>McControl.Init()</c> đang gọi: <c>Connect()</c> rồi <c>LoadSolution()</c>. Mô phỏng: nối bản giả
-        /// và dựng kho biến giả theo <see cref="VisionGlobalVarCatalog"/>.
+        /// <c>McControl.Init()</c> đang gọi: <c>Connect()</c> rồi <c>LoadSolution()</c>. Mô phỏng: nối bản giả.
         /// </summary>
         bool Connect() override;
         void Disconnect() override;
         bool LoadSolution(const std::string& solutionPath) override;
 
-        /// <summary>Kích Flow hiệu chuẩn kèm vị trí trục thật. Ghi biến toàn cục rồi Run trong cùng một lần gọi — xem
-        /// <see cref="IVisionDevice::TriggerCalib"/>.</summary>
-        VisionPose TriggerCalib(EVisionProcedure procedure, const AxisSnapshot& axes, std::stop_token ct) override;
-        /// <summary>Không canh giờ (không chạy Flow), nhưng giữ khoá lệnh để không lọt lần kích Flow nào vào giữa.</summary>
-        CalibClearResult ClearCalibPoints(EVisionProcedure procedure) override;
-        GlobalVarSyncReport SyncGlobalVariables(const std::vector<GlobalVarSpec>& specs, bool apply) override;
-        /// <summary>Không canh giờ như Run(): đây chỉ là đọc phần khai báo, không kích camera.</summary>
-        VmFlowOutputs ReadFlowOutputs(const std::string& flow) override;
+        /// <summary>Không canh giờ như Run(): chỉ tra solution, không kích camera.</summary>
+        std::string CheckModulePath(const std::string& path) override;
         VmCallResult CallFlow(const VmCallRequest& request, std::stop_token ct) override;
         std::string SaveSolution() override;
 
         std::shared_ptr<const ImageData> LastImage() const override;
         int LastImageNozzle() const override;
-
-        // ── phần dựng lời gọi, để thiết bị thật dùng lại đúng một chỗ ──
-        /// <summary>Việc nạp điểm → Flow chạy nó: GridCalib → LocateCan (nhánh hiệu chuẩn của chính Flow soi).</summary>
-        static std::string FlowNameOf(const VisionOutputNames& names, EVisionProcedure procedure);
-        /// <summary>Vị trí trục → tên biến toàn cục khai ở trang Setting. Tên để trống thì bỏ qua biến đó.</summary>
-        static std::map<std::string, double> AxisVars(const VisionOutputNames& names, const AxisSnapshot& axes);
-        /// <summary>Biến ghi trước một lần nạp điểm: <see cref="AxisVars"/> + biến rẽ nhánh = 0 (nhánh hiệu chuẩn).</summary>
-        static std::map<std::string, double> CalibVars(const VisionOutputNames& names, const AxisSnapshot& axes);
-        /// <summary>Nozzle (1…7) App ghi vào biến <c>Nozzle</c> của một lần gọi Flow; 0 nếu không ghi.</summary>
-        static int NozzleOf(const VisionOutputNames& names, const std::map<std::string, double>& globals);
 
     private:
         std::shared_ptr<IVisionDevice> EnsureDevice(std::string& why);

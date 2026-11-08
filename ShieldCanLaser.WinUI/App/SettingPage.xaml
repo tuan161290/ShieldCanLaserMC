@@ -10,12 +10,6 @@
         <Style x:Key="FieldLabel" TargetType="TextBlock" BasedOn="{StaticResource CaptionStyle}">
             <Setter Property="Margin" Value="0,0,0,4"/>
         </Style>
-        <!-- Ô báo cáo chỉ đọc (biến toàn cục / Output Flow): chọn và chép được, không viền -->
-        <Style x:Key="ReportTextStyle" TargetType="TextBlock">
-            <Setter Property="TextWrapping" Value="Wrap"/>
-            <Setter Property="IsTextSelectionEnabled" Value="True"/>
-            <Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}"/>
-        </Style>
         <!-- Dòng cài đặt: tên + chú thích | ô nhập + đơn vị -->
         <Style x:Key="SettingRowStyle" TargetType="Grid">
             <Setter Property="MinHeight" Value="56"/>
@@ -164,21 +158,15 @@
                                 </StackPanel>
                                 <Border Style="{StaticResource RowDividerStyle}"/>
                                 <StackPanel Padding="16,10">
-                                    <CheckBox x:Name="TraySensorsCheck" Content="Tray sensors fitted (X005 / X006)"/>
+                                    <CheckBox x:Name="TraySensorsCheck" Content="Tray sensors fitted (X008 / X009)"/>
                                     <TextBlock Style="{StaticResource SettingRowCaptionStyle}" Margin="28,0,0,0"
                                                Text="On (default): Auto skips a tray whose sensor is off and refuses START with no tray. Off: both trays are assumed present."/>
                                 </StackPanel>
                                 <Border Style="{StaticResource RowDividerStyle}"/>
                                 <StackPanel Padding="16,10">
-                                    <CheckBox x:Name="AirSensorCheck" Content="Air pressure sensor fitted (X014)"/>
+                                    <CheckBox x:Name="LightCurtainCheck" Content="Photo safety sensor fitted (X010)"/>
                                     <TextBlock Style="{StaticResource SettingRowCaptionStyle}" Margin="28,0,0,0"
-                                               Text="Pressure low: alarm 1103, all motion blocked until pressure returns and RESET. Check the X014 lamp on the Manual page before enabling."/>
-                                </StackPanel>
-                                <Border Style="{StaticResource RowDividerStyle}"/>
-                                <StackPanel Padding="16,10">
-                                    <CheckBox x:Name="LightCurtainCheck" Content="Photo safety sensor fitted (X004)"/>
-                                    <TextBlock Style="{StaticResource SettingRowCaptionStyle}" Margin="28,0,0,0"
-                                               Text="Sensor interrupted: all axes stop; in Auto the machine pauses — clear the sensor area, then press START. Check the X004 lamp on the Manual page before enabling."/>
+                                               Text="Sensor interrupted: all axes stop; in Auto the machine pauses — clear the sensor area, then press START. Check the X010 lamp on the Manual page before enabling."/>
                                 </StackPanel>
                             </StackPanel>
                         </Grid>
@@ -394,11 +382,11 @@
                 </StackPanel>
             </ScrollViewer>
 
-            <!-- ══════════ Vision Flow ══════════ Solution VisionMaster + tên Flow / biến. -->
+            <!-- ══════════ Vision Flow ══════════ Solution VisionMaster + đường dẫn Flow.Group của bước kiểm tra. -->
             <ScrollViewer x:Name="VisionSection" VerticalScrollBarVisibility="Auto" Visibility="Collapsed">
                 <StackPanel Spacing="8" Margin="0,0,12,0">
 
-                    <!-- ══════════ Vision — dựng solution ══════════ -->
+                    <!-- ══════════ Vision — solution và bước kiểm tra ══════════ -->
                     <Border Style="{StaticResource CardBorderStyle}" Padding="0">
                         <Grid>
                             <Grid.RowDefinitions>
@@ -407,7 +395,7 @@
                                 <RowDefinition Height="*"/>
                             </Grid.RowDefinitions>
                             <Border Style="{StaticResource CardHeaderStyle}">
-                                <TextBlock Text="Vision — VisionMaster Solution Setup" Style="{StaticResource SectionHeaderStyle}"/>
+                                <TextBlock Text="Vision — VisionMaster Solution &amp; Inspection" Style="{StaticResource SectionHeaderStyle}"/>
                             </Border>
                             <Border Grid.Row="1" Style="{StaticResource DividerStyle}"/>
                             <StackPanel Grid.Row="2" Margin="12">
@@ -424,105 +412,41 @@
 
                                 <Border Style="{StaticResource CardDividerStyle}"/>
 
-                                <TextBlock Text="Solution Tools" Style="{StaticResource SubHeaderStyle}"/>
+                                <!-- Vision chỉ kiểm tra sau khi khắc (PLAN-LASER.md §4): một đường dẫn Flow.Group, App đọc output Result. -->
+                                <TextBlock Text="Inspection After Marking" Style="{StaticResource SubHeaderStyle}"/>
                                 <TextBlock Style="{StaticResource HintStyle}"
-                                           Text="None of these buttons runs a Flow or triggers a camera. Hover over a button to see what it does. Try on a copy of the .solw first."/>
-                                <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
-                                    <Button x:Name="CheckGlobalVarsButton" Content="CHECK VARS" Width="130" Click="OnCheckGlobalVarsClick"
-                                            ToolTipService.ToolTip="Compare the solution against the global variables the Flows need. Read-only, changes nothing."/>
-                                    <Button x:Name="CreateGlobalVarsButton" Content="ADD VARS" Width="160" Margin="8,0,0,0"
-                                            Style="{StaticResource PrimaryButton}" Click="OnCreateGlobalVarsClick"
-                                            ToolTipService.ToolTip="Create MISSING variables via the SDK, then save the solution. Existing variables keep their value and type."/>
-                                    <Border Style="{StaticResource VerticalDividerStyle}" Margin="16,4"/>
-                                    <Button x:Name="CheckFlowOutputsButton" Content="CHECK FLOW" Width="190" Click="OnCheckFlowOutputsClick"
-                                            ToolTipService.ToolTip="Check that Flows declare all outputs: misspelled names, types the App cannot read as numbers, Script Inputs with an empty Subscribe field."/>
-                                </StackPanel>
-                                <!-- Hai báo cáo chỉ đọc (TextBox IsReadOnly không viền của bản WPF); ẩn khi chưa có gì. -->
-                                <ScrollViewer x:Name="GlobalVarReportScroll" MaxHeight="160" VerticalScrollBarVisibility="Auto" Visibility="Collapsed">
-                                    <TextBlock x:Name="GlobalVarReportText" Style="{StaticResource ReportTextStyle}" FontSize="12"/>
-                                </ScrollViewer>
-                                <ScrollViewer x:Name="FlowOutputReportScroll" MaxHeight="320" VerticalScrollBarVisibility="Auto" Visibility="Collapsed"
-                                              Margin="0,8,0,0">
-                                    <TextBlock x:Name="FlowOutputReportText" Style="{StaticResource ReportTextStyle}" FontSize="11" FontFamily="Consolas"/>
-                                </ScrollViewer>
-                            </StackPanel>
-                        </Grid>
-                    </Border>
-
-                    <!-- ══════════ Vision — tên Flow và biến ══════════ -->
-                    <Border Style="{StaticResource CardBorderStyle}" Padding="0">
-                        <Grid>
-                            <Grid.RowDefinitions>
-                                <RowDefinition Height="Auto"/>
-                                <RowDefinition Height="Auto"/>
-                                <RowDefinition Height="*"/>
-                            </Grid.RowDefinitions>
-                            <Border Style="{StaticResource CardHeaderStyle}">
-                                <TextBlock Text="Vision — Flow &amp; Variable Names in Solution" Style="{StaticResource SectionHeaderStyle}"/>
-                            </Border>
-                            <Border Grid.Row="1" Style="{StaticResource DividerStyle}"/>
-                            <StackPanel Grid.Row="2" Margin="12">
-                                <TextBlock Style="{StaticResource HintStyle}"
-                                           Text="One Flow: LocateCan (fixed CAM, one nozzle at a time). It both inspects and loads N-Point calibration points, branching on the int variable IsLocate (1 = inspect, 0 = load point). Enter the exact names used in the solution, then press SAVE."/>
-
-                                <TextBlock Text="Flow &amp; Output Names" Style="{StaticResource SubHeaderStyle}"/>
-                                <StackPanel Orientation="Horizontal" Spacing="24">
+                                           Text="After marking, each can is brought to the CAM: the App runs the Flow and reads the output Result (int or float) of the Group — 1 = OK, anything else = NG. Enter Flow.Group exactly as in the solution, then SAVE. CHECK PATH looks the Flow and Group up without running anything; Result itself is checked on the first run."/>
+                                <StackPanel Orientation="Horizontal" Spacing="8">
                                     <StackPanel>
-                                        <TextBlock Text="Flow LocateCan" Style="{StaticResource FieldLabel}"/>
-                                        <TextBox x:Name="FlowLocateCanBox" Width="160"/>
+                                        <TextBlock Text="Flow.Group" Style="{StaticResource FieldLabel}"/>
+                                        <TextBox x:Name="InspectPathBox" Width="300" PlaceholderText="Flow1.GroupInspection"/>
                                     </StackPanel>
-                                    <StackPanel>
-                                        <TextBlock Text="Output Found" Style="{StaticResource FieldLabel}"/>
-                                        <TextBox x:Name="OutFoundBox" Width="160"/>
-                                    </StackPanel>
-                                    <StackPanel>
-                                        <TextBlock Text="Output image (empty = no image)" Style="{StaticResource FieldLabel}"/>
-                                        <TextBox x:Name="OutImageBox" Width="200"/>
-                                    </StackPanel>
+                                    <Button x:Name="CheckPathButton" Content="CHECK PATH" Width="150" VerticalAlignment="Bottom" Click="OnCheckPathClick"
+                                            ToolTipService.ToolTip="Look up the Flow and the Group in the loaded solution. Saves the path first if changed. Does not run the Flow or trigger the camera."/>
+                                    <TextBlock x:Name="CheckPathText" Style="{StaticResource CaptionStyle}" VerticalAlignment="Bottom" Margin="4,0,0,8"
+                                               TextWrapping="Wrap" MaxWidth="520" IsTextSelectionEnabled="True"/>
                                 </StackPanel>
 
-                                <Border Style="{StaticResource CardDividerStyle}" Margin="-12,12,-12,12"/>
+                                <Border Style="{StaticResource CardDividerStyle}"/>
 
                                 <TextBlock Text="Main Page Image Frame" Style="{StaticResource SubHeaderStyle}"/>
                                 <TextBlock Style="{StaticResource HintStyle}"
-                                           Text="Flow name (e.g. LocateCan) → whole-Flow Display; Flow.Module (e.g. LocateCan.Module) → that module. Empty: the CAM frame follows the LocateCan Flow."/>
-                                <StackPanel>
-                                    <TextBlock Text="CAM frame" Style="{StaticResource FieldLabel}"/>
-                                    <TextBox x:Name="RenderCamBox" Width="210" HorizontalAlignment="Left"/>
-                                </StackPanel>
-
-                                <Border Style="{StaticResource CardDividerStyle}" Margin="-12,12,-12,12"/>
-
-                                <TextBlock Text="Global Variables Written Before Each Flow" Style="{StaticResource SubHeaderStyle}"/>
-                                <TextBlock Style="{StaticResource HintStyle}"
-                                           Text="Encoder X / Z at capture, nozzle number 1…7 being inspected, and the branch variable — 1 inspect, 0 load calibration point (int type for the branch Module). Leave the branch variable name empty and the App will not write it."/>
+                                           Text="Output image: Flow-level image output shown in the CAM frame (empty = no image). CAM frame: Flow name → whole-Flow Display; Flow.Module → that module. Empty: the inspection Flow."/>
                                 <StackPanel Orientation="Horizontal" Spacing="24">
                                     <StackPanel>
-                                        <TextBlock Text="Module Global Variable (empty = auto-detect)" Style="{StaticResource FieldLabel}"/>
-                                        <TextBox x:Name="GlobalVarModuleBox" Width="220"/>
+                                        <TextBlock Text="Output image" Style="{StaticResource FieldLabel}"/>
+                                        <TextBox x:Name="OutImageBox" Width="200"/>
                                     </StackPanel>
                                     <StackPanel>
-                                        <TextBlock Text="Axis X var (mm)" Style="{StaticResource FieldLabel}"/>
-                                        <TextBox x:Name="GvAxisXBox" Width="110"/>
-                                    </StackPanel>
-                                    <StackPanel>
-                                        <TextBlock Text="Axis Z var (mm)" Style="{StaticResource FieldLabel}"/>
-                                        <TextBox x:Name="GvAxisZBox" Width="110"/>
-                                    </StackPanel>
-                                    <StackPanel>
-                                        <TextBlock Text="Nozzle var (1…7)" Style="{StaticResource FieldLabel}"/>
-                                        <TextBox x:Name="GvNozzleBox" Width="110"/>
-                                    </StackPanel>
-                                    <StackPanel>
-                                        <TextBlock Text="Branch var (int)" Style="{StaticResource FieldLabel}"/>
-                                        <TextBox x:Name="GvIsLocateBox" Width="130"/>
+                                        <TextBlock Text="CAM frame" Style="{StaticResource FieldLabel}"/>
+                                        <TextBox x:Name="RenderCamBox" Width="240"/>
                                     </StackPanel>
                                 </StackPanel>
                             </StackPanel>
                         </Grid>
                     </Border>
 
-                    <!-- ══════════ Bù laser và hiệu chuẩn ══════════ SystemData::LaserComp + VisionCalib (PLAN-LASER.md §4.2, §4.3). -->
+                    <!-- ══════════ Laser ══════════ Laser không có giao tiếp: chỉ DO kích + thời gian giữ (PLAN-LASER.md §4). -->
                     <Border Style="{StaticResource CardBorderStyle}" Padding="0">
                         <Grid>
                             <Grid.RowDefinitions>
@@ -531,68 +455,16 @@
                                 <RowDefinition Height="*"/>
                             </Grid.RowDefinitions>
                             <Border Style="{StaticResource CardHeaderStyle}">
-                                <TextBlock Text="Laser Compensation &amp; Calibration" Style="{StaticResource SectionHeaderStyle}"/>
+                                <TextBlock Text="Laser" Style="{StaticResource SectionHeaderStyle}"/>
                             </Border>
                             <Border Grid.Row="1" Style="{StaticResource DividerStyle}"/>
                             <StackPanel Grid.Row="2" Margin="12">
-                                <TextBlock Text="Laser Station Compensation" Style="{StaticResource SubHeaderStyle}"/>
                                 <TextBlock Style="{StaticResource HintStyle}"
-                                           Text="X_target = Laser(k).X + TrimX[k] + GainX · dX;  Z_target = Laser(k).Z + TrimZ[k] + GainZ · dZ, with (dX, dZ) = can position vs. master of that nozzle. Default gain −1 (move the nozzle back by the offset); if the mark lands on the wrong side, change the sign here — do not edit the Flow. |dX| or |dZ| above the limit → cell NG, not marked (alarm 5004)."/>
-                                <StackPanel Orientation="Horizontal" Spacing="24">
-                                    <StackPanel>
-                                        <TextBlock Text="Gain X" Style="{StaticResource FieldLabel}"/>
-                                        <TextBox x:Name="GainXBox" Width="110" TextAlignment="Right"/>
-                                    </StackPanel>
-                                    <StackPanel>
-                                        <TextBlock Text="Gain Z" Style="{StaticResource FieldLabel}"/>
-                                        <TextBox x:Name="GainZBox" Width="110" TextAlignment="Right"/>
-                                    </StackPanel>
-                                    <StackPanel>
-                                        <TextBlock Text="Max compensation (mm)" Style="{StaticResource FieldLabel}"/>
-                                        <TextBox x:Name="MaxCompBox" Width="140" TextAlignment="Right"/>
-                                    </StackPanel>
-                                    <StackPanel>
-                                        <TextBlock Text="Laser pulse minimum (ms)" Style="{StaticResource FieldLabel}"/>
-                                        <TextBox x:Name="LaserPulseMinBox" Width="150" TextAlignment="Right"/>
-                                    </StackPanel>
+                                           Text="The laser start output is held for the model's Mark time, but never shorter than this minimum. The mark position per nozzle is Laser(k) + trim (Vision Edit page) — no vision compensation."/>
+                                <StackPanel>
+                                    <TextBlock Text="Laser pulse minimum (ms)" Style="{StaticResource FieldLabel}"/>
+                                    <TextBox x:Name="LaserPulseMinBox" Width="150" TextAlignment="Right" HorizontalAlignment="Left"/>
                                 </StackPanel>
-
-                                <Border Style="{StaticResource CardDividerStyle}" Margin="-12,12,-12,12"/>
-
-                                <TextBlock Text="X × Z Grid Calibration (Vision Edit page)" Style="{StaticResource SubHeaderStyle}"/>
-                                <TextBlock Style="{StaticResource HintStyle}"
-                                           Text="9-point grid around the saved center: step per axis, nozzle holding the master can, VERIFY GRID travel and tolerance, images averaged per measurement. Master age above the valid days → warning 4090."/>
-                                <StackPanel Orientation="Horizontal" Spacing="24">
-                                    <StackPanel>
-                                        <TextBlock Text="Grid step X (mm)" Style="{StaticResource FieldLabel}"/>
-                                        <TextBox x:Name="GridStepXBox" Width="110" TextAlignment="Right"/>
-                                    </StackPanel>
-                                    <StackPanel>
-                                        <TextBlock Text="Grid step Z (mm)" Style="{StaticResource FieldLabel}"/>
-                                        <TextBox x:Name="GridStepZBox" Width="110" TextAlignment="Right"/>
-                                    </StackPanel>
-                                    <StackPanel>
-                                        <TextBlock Text="Calibration nozzle (1…7)" Style="{StaticResource FieldLabel}"/>
-                                        <TextBox x:Name="CalibNozzleBox" Width="140" TextAlignment="Right"/>
-                                    </StackPanel>
-                                    <StackPanel>
-                                        <TextBlock Text="Verify travel (mm)" Style="{StaticResource FieldLabel}"/>
-                                        <TextBox x:Name="VerifyStepBox" Width="110" TextAlignment="Right"/>
-                                    </StackPanel>
-                                    <StackPanel>
-                                        <TextBlock Text="Verify tolerance (mm)" Style="{StaticResource FieldLabel}"/>
-                                        <TextBox x:Name="ResidualTolBox" Width="130" TextAlignment="Right"/>
-                                    </StackPanel>
-                                    <StackPanel>
-                                        <TextBlock Text="Images per measurement" Style="{StaticResource FieldLabel}"/>
-                                        <TextBox x:Name="ShotsPerPointBox" Width="140" TextAlignment="Right"/>
-                                    </StackPanel>
-                                    <StackPanel>
-                                        <TextBlock Text="Calibration valid (days)" Style="{StaticResource FieldLabel}"/>
-                                        <TextBox x:Name="CalibValidDaysBox" Width="130" TextAlignment="Right"/>
-                                    </StackPanel>
-                                </StackPanel>
-                                <TextBlock x:Name="GridCenterText" Style="{StaticResource CaptionStyle}" Margin="0,8,0,0"/>
                             </StackPanel>
                         </Grid>
                     </Border>

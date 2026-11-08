@@ -70,6 +70,23 @@ namespace
         return a.UpdateTime == b.UpdateTime && a.Level == b.Level && a.Source == b.Source && a.Message == b.Message;
     }
 
+    /// <summary>Một thuộc tính của hiệu ứng ẩn / hiện card Log. EnableDependentAnimation cho Width (đổi bố cục); Opacity, Angle
+    /// không cần cờ này và vẫn chạy độc lập như thường.</summary>
+    DoubleAnimation LogSlide(DependencyObject const& target, wchar_t const* property, double from, double to)
+    {
+        CubicEase ease;
+        ease.EasingMode(EasingMode::EaseOut);
+        DoubleAnimation a;
+        a.From(WF::IReference<double>(from));
+        a.To(WF::IReference<double>(to));
+        a.Duration(DurationHelper::FromTimeSpan(std::chrono::milliseconds(240)));
+        a.EasingFunction(ease);
+        a.EnableDependentAnimation(true);
+        Storyboard::SetTarget(a, target);
+        Storyboard::SetTargetProperty(a, property);
+        return a;
+    }
+
     /// <summary>Một dòng nhật ký — DataTemplate LogData của bản WPF: vạch trái 3 px + giờ (Consolas) + nguồn, dưới là
     /// nội dung. Màu theo mức (Tuấn 02/10): Info vạch accent; Warning vạch #E8A317, chữ #9D5D00; Error vạch #E94949,
     /// chữ #C42B1C đậm; Debug vạch #A0A0A0, nội dung #707070.</summary>
@@ -144,13 +161,13 @@ namespace
         return item;
     }
 
-    /// <summary>Đường dẫn Flow/module của khung CAM. Ô ở Setting (RenderCam) ghi đường dẫn đầy đủ: "LocateCan" = cả Flow,
-    /// "LocateCan.Module" = module trong Flow. Trống: cả Flow LocateCan.</summary>
+    /// <summary>Đường dẫn Flow/module của khung CAM. Ô ở Setting (RenderCam) ghi đường dẫn đầy đủ: "Flow1" = cả Flow,
+    /// "Flow1.Module" = module trong Flow. Trống: cả Flow kiểm tra (phần Flow của đường dẫn Flow.Group).</summary>
     std::string CurrentRenderPath()
     {
         auto sys = scs::McDataManager::SysData();
         const scs::VisionOutputNames& n = sys->VisionOutputs;
-        return scs::VisionOutputNames::RenderPath(n.FlowLocateCan, n.RenderCam);
+        return scs::VisionOutputNames::RenderPath(n.InspectFlow(), n.RenderCam);
     }
 
     std::string BindKey(int loadCount, const std::string& path) { return std::to_string(loadCount) + "|" + path; }
@@ -164,7 +181,7 @@ namespace
         case scs::ECellState::Ok:         return L"TrayCellOkBrush";
         case scs::ECellState::Ng:         return L"TrayCellNgBrush";
         case scs::ECellState::Skipped:    return L"TrayCellSkippedBrush";
-        default:                          return L"TrayCellEmptyBrush";
+        default:                          return L"TrayCellLoadedBrush";
         }
     }
 
@@ -208,6 +225,9 @@ namespace winrt::ShieldCanLaser::implementation
 
         m_trayMaps[0].Host = TrayMap1();
         m_trayMaps[1].Host = TrayMap2();
+        m_trayMaps[1].Tray = 1;
+        HookTrayMap(0);
+        HookTrayMap(1);
         BuildTrayLegend();
         BuildNozzleStrip();
         QueueVmWork(true);   // trang Main là trang mặc định: OnShown(true) có thể đã tới trước Loaded
@@ -224,9 +244,16 @@ namespace winrt::ShieldCanLaser::implementation
         const scs::EMcState state = status.State();
         const scs::EMcMode mode = status.Mode();
 
-        // Nút đang chọn tô theo màu đèn tháp tương ứng (AUTO xanh lá, MANUAL cam).
-        ui::SetTint(AutoButton(), mode == scs::EMcMode::Auto ? ui::Tint::Green : ui::Tint::None);
-        ui::SetTint(ManualButton(), mode == scs::EMcMode::Manual ? ui::Tint::Caution : ui::Tint::None);
+        // Công tắc AUTO/MANUAL: bên đang chọn có khối màu đèn tháp (AUTO xanh lá, MANUAL cam) + chữ trắng, bên kia chữ xám.
+        const int isAuto = mode == scs::EMcMode::Auto ? 1 : 0;
+        if (isAuto != m_shownAuto)
+        {
+            m_shownAuto = isAuto;
+            ui::Show(ModeThumbAuto(), isAuto);
+            ui::Show(ModeThumbManual(), !isAuto);
+            ModeTextAuto().Foreground(ui::Res(isAuto ? L"TextOnAccentBrush" : L"StatusOffBrush"));
+            ModeTextManual().Foreground(ui::Res(isAuto ? L"StatusOffBrush" : L"TextOnAccentBrush"));
+        }
 
         UpdateRunButton(state);
 
@@ -274,13 +301,19 @@ namespace winrt::ShieldCanLaser::implementation
                 SyncImage(make(400, 300, 1, 16, [](uint8_t* p, int x, int y) { p[0] = (uint8_t)(x * 255 / 399); if (std::abs(x - y) < 3) p[0] = 255; }));
                 scs::LogWorker::Instance().RecordLog("Self-test: error line", scs::LogLevel::Error, "Test");
                 scs::McControl::Status().SetMessage("Self-test: reason message shown below the buttons");
-                // Sơ đồ tray: tray 1 đã khắc 3 hàng, hàng vừa xong 6 OK + 1 NG; tray 2 vắng (chỉ dữ liệu tạm của chế độ chụp ảnh).
+                // Sơ đồ tray: tray 1 đã khắc 3 hàng, hàng vừa xong 6 OK + 1 NG, chọn vài ô hàng 5, 6 chạy lẻ; tray 2 vắng (chỉ dữ
+                // liệu tạm của chế độ chụp ảnh).
                 if (auto fake = std::dynamic_pointer_cast<scs::FakeIo>(scs::McControl::Io()))
                     fake->SimSet(scs::IoMap::TrayPresent(2), false);
                 if (auto r = scs::McDataManager::RunData())
                 {
                     const int ok = (int)scs::ECellState::Ok, ng = (int)scs::ECellState::Ng;
-                    r->TrayRowsDone[0] = 3;
+                    for (int cell = 0; cell < 3 * NozzleCount; ++cell) r->Trays[0].MarkDone(cell);
+                    for (int cell : { 29, 30, 31, 35 }) r->Trays[0].Toggle(cell);
+                    r->LastCycleSec = 95.4;
+                    r->LastCycleProducts = 47;
+                    r->CycleStartedAtMs = scs::RunningData::NowMs() - 41300;
+                    r->CycleOk = 20;
                     r->LastRowResult = { ok, ok, ng, ok, ok, ok, ok };
                     r->LastRowTray = 1;
                     r->LastRowIndex = 3;
@@ -353,38 +386,49 @@ namespace winrt::ShieldCanLaser::implementation
         }
 
         ui::SetText(NgRateText(), std::format("{:.2f} %", run->NgRatePercent()));
-        // Bảng thời gian — xem chú thích ở MainPage.xaml. "—" = chưa có số.
-        auto perProduct = [](double s) { return s > 0 ? std::format("{:.2f} s", s) : std::string("—"); };
+        // Bảng thời gian — như ShieldCanAssy.WinUI, xem chú thích ở MainPage.xaml.
+        const std::string none = "—";
+        auto perProduct = [](double s) { return std::format("{:.2f} s", s); };
         auto clock = [](double s) {
-            const long long tenths = std::llround(s * 10);
-            return std::format("{:02}:{:02}.{}", tenths / 600, tenths / 10 % 60, tenths % 10);
+            const long long tenths = (long long)std::floor(std::max(0.0, s) * 10.0);
+            const long long h = tenths / 36000, m = tenths / 600 % 60, sec = tenths / 10 % 60, t = tenths % 10;
+            return h >= 1 ? std::format("{}:{:02}:{:02}.{}", h, m, sec, t) : std::format("{:02}:{:02}.{}", m, sec, t);
         };
-        const double nowSec = scs::McControl::CurrentCycleSec();
-        const int nowDone = scs::McControl::CurrentCycleProducts();
-        ui::SetText(PreTackText(), perProduct(run->LastProductTimeSec));
-        ui::SetText(TackText(), nowDone > 0 ? perProduct(nowSec / nowDone) : std::string("—"));
-        ui::SetText(CycleNowText(), nowSec > 0 ? clock(nowSec) : std::string("—"));
-        ui::SetText(CyclePrevText(), run->LastCycleSec > 0 ? clock(run->LastCycleSec) : std::string("—"));
+        const bool hasLast = run->LastCycleSec > 0;
+        const std::string lastCycle = hasLast ? clock(run->LastCycleSec) : none;
+        const std::string lastTack = run->LastCycleProducts > 0 ? perProduct(run->LastTackSec()) : none;
+        double currentTack = 0;
+        std::string curCycle = none, curTack = none;
+        if (run->CycleStartedAtMs != 0)
+        {
+            const double sec = std::max(0.0, (double)(scs::RunningData::NowMs() - run->CycleStartedAtMs) / 1000.0);
+            const int done = run->CycleOk;
+            if (done > 0) currentTack = sec / done;
+            curCycle = clock(sec);
+            curTack = done > 0 ? perProduct(currentTack) : none;
+        }
+        else if (run->CycleHoldLast && hasLast)
+        {
+            curCycle = lastCycle;
+            curTack = lastTack;
+        }
+        ui::SetText(CycleText(), curCycle);
+        ui::SetText(LastCycleText(), lastCycle);
+        ui::SetText(TackText(), curTack);
+        ui::SetText(LastTackText(), lastTack);
 
-        const double avg = run->AvgProductTimeSec;
-        const double uph = avg > 0 ? 3600.0 / avg : 0.0;
-        ui::SetText(UphText(), std::format("Est. throughput: {} pcs/h", std::llround(uph)));
+        const double tackForUph = run->LastCycleProducts > 0 ? run->LastTackSec() : currentTack;
+        ui::SetText(UphText(), tackForUph > 0 ? std::format("Est. output: {:.0f} pcs/h", 3600.0 / tackForUph) : std::string("Est. output: —"));
     }
 
     // ══════════ Sơ đồ tray + dải nozzle ══════════
 
-    // Chú thích màu ở đáy card Trays: ô mẫu + chữ (chung cho tray và nozzle).
+    // Chú thích màu ở đáy card Trays: ô mẫu + chữ.
     void MainPage::BuildTrayLegend()
     {
         auto legend = TrayLegend();
         legend.Children().Clear();
-        const std::pair<scs::ECellState, wchar_t const*> items[] = {
-            { scs::ECellState::Loaded, L"Loaded" }, { scs::ECellState::Processing, L"Processing" },
-            { scs::ECellState::Ok, L"OK" }, { scs::ECellState::Ng, L"NG" },
-            { scs::ECellState::Skipped, L"Done earlier" }, { scs::ECellState::Empty, L"Empty" },
-        };
-        for (const auto& [state, label] : items)
-        {
+        auto add = [&](wchar_t const* fill, wchar_t const* stroke, double thickness, wchar_t const* label) {
             StackPanel item;
             item.Orientation(Orientation::Horizontal);
             item.Spacing(5);
@@ -392,9 +436,9 @@ namespace winrt::ShieldCanLaser::implementation
             swatch.Width(14);
             swatch.Height(14);
             swatch.CornerRadius(CornerRadiusHelper::FromUniformRadius(3));
-            swatch.BorderThickness(ThicknessHelper::FromUniformLength(1));
-            swatch.BorderBrush(ui::Res(L"ControlStrokeSecondaryBrush"));
-            swatch.Background(ui::Res(CellBrushKey((int)state)));
+            swatch.BorderThickness(ThicknessHelper::FromUniformLength(thickness));
+            swatch.BorderBrush(ui::Res(stroke));
+            swatch.Background(ui::Res(fill));
             swatch.VerticalAlignment(VerticalAlignment::Center);
             TextBlock text;
             text.Text(label);
@@ -404,7 +448,14 @@ namespace winrt::ShieldCanLaser::implementation
             item.Children().Append(swatch);
             item.Children().Append(text);
             legend.Children().Append(item);
-        }
+        };
+        const std::pair<scs::ECellState, wchar_t const*> items[] = {
+            { scs::ECellState::Loaded, L"Loaded" }, { scs::ECellState::Processing, L"Processing" },
+            { scs::ECellState::Ok, L"OK" }, { scs::ECellState::Ng, L"NG" },
+            { scs::ECellState::Skipped, L"Done earlier" },
+        };
+        for (const auto& [state, label] : items) add(CellBrushKey((int)state), L"ControlStrokeSecondaryBrush", 1, label);
+        add(L"TrayCellLoadedBrush", L"AccentBrush", 2, L"Selected");
     }
 
     // Dải 7 nozzle: mỗi hàng = ô màu "N{k}" (36 px) + trạng thái + độ lệch (dX / dZ, mm) — hàng giãn kín chiều cao card.
@@ -435,7 +486,7 @@ namespace winrt::ShieldCanLaser::implementation
             row.Cell.CornerRadius(CornerRadiusHelper::FromUniformRadius(4));
             row.Cell.BorderThickness(ThicknessHelper::FromUniformLength(1));
             row.Cell.BorderBrush(ui::Res(L"ControlStrokeSecondaryBrush"));
-            row.Cell.Background(ui::Res(L"TrayCellEmptyBrush"));
+            row.Cell.Background(ui::Res(L"TrayCellLoadedBrush"));
             TextBlock name;
             name.Text(ui::H(std::format("N{}", k)));
             name.FontSize(13);
@@ -456,14 +507,14 @@ namespace winrt::ShieldCanLaser::implementation
             Grid::SetColumn(row.Text, 1);
             grid.Children().Append(row.Text);
 
-            row.Dev = TextBlock();
-            row.Dev.FontSize(12);
-            row.Dev.FontFamily(winrt::Microsoft::UI::Xaml::Media::FontFamily(L"Consolas"));
-            row.Dev.VerticalAlignment(VerticalAlignment::Center);
-            row.Dev.HorizontalAlignment(HorizontalAlignment::Right);
-            Grid::SetRow(row.Dev, k - 1);
-            Grid::SetColumn(row.Dev, 2);
-            grid.Children().Append(row.Dev);
+            row.ResultText = TextBlock();
+            row.ResultText.FontSize(12);
+            row.ResultText.FontFamily(winrt::Microsoft::UI::Xaml::Media::FontFamily(L"Consolas"));
+            row.ResultText.VerticalAlignment(VerticalAlignment::Center);
+            row.ResultText.HorizontalAlignment(HorizontalAlignment::Right);
+            Grid::SetRow(row.ResultText, k - 1);
+            Grid::SetColumn(row.ResultText, 2);
+            grid.Children().Append(row.ResultText);
         }
     }
 
@@ -473,6 +524,7 @@ namespace winrt::ShieldCanLaser::implementation
     {
         if (!map.Host || cols < 1) return;
         if ((int)map.Cells.size() == count && map.Cols == cols) return;
+        CancelCellDrag();   // Anchor / End trỏ vào ô sắp bị xoá
         auto grid = map.Host;
         grid.Children().Clear();
         grid.ColumnDefinitions().Clear();
@@ -480,7 +532,6 @@ namespace winrt::ShieldCanLaser::implementation
         grid.ColumnSpacing(3);
         grid.RowSpacing(3);
         map.Cells.clear();
-        map.Shown.assign((size_t)std::max(0, count), -1);
         map.Cols = cols;
 
         const int rows = (count + cols - 1) / cols;
@@ -500,48 +551,184 @@ namespace winrt::ShieldCanLaser::implementation
         }
         for (int i = 0; i < count; ++i)
         {
-            Border cell;
-            if (stretchRows) cell.MinHeight(18);
-            else cell.Height(cellHeight);
-            cell.CornerRadius(CornerRadiusHelper::FromUniformRadius(4));
-            cell.BorderThickness(ThicknessHelper::FromUniformLength(1));
-            cell.BorderBrush(ui::Res(L"ControlStrokeSecondaryBrush"));
-            cell.Background(ui::Res(L"TrayCellEmptyBrush"));
+            TrayCell cell;
+            cell.Root = Grid();
+            cell.Fill = Border();
+            if (stretchRows) cell.Fill.MinHeight(18);
+            else cell.Fill.Height(cellHeight);
+            cell.Fill.CornerRadius(CornerRadiusHelper::FromUniformRadius(4));
+            cell.Fill.BorderThickness(ThicknessHelper::FromUniformLength(1));
+            cell.Fill.BorderBrush(ui::Res(L"ControlStrokeSecondaryBrush"));
+            cell.Fill.Background(ui::Res(L"TrayCellLoadedBrush"));
             if (labels)
             {
                 TextBlock text;
-                text.Text(winrt::to_hstring(i + 1));
-                text.FontSize(12);
+                text.Text(ui::H(std::format("{}-{}", i / cols + 1, i % cols + 1)));
+                text.FontSize(11.5);
+                text.Foreground(ui::Res(L"TextPrimaryBrush"));
                 text.HorizontalAlignment(HorizontalAlignment::Center);
                 text.VerticalAlignment(VerticalAlignment::Center);
-                cell.Child(text);
+                cell.Fill.Child(text);
             }
-            Grid::SetRow(cell, i / cols);
-            Grid::SetColumn(cell, i % cols);
-            grid.Children().Append(cell);
+            cell.Selection = Border();
+            cell.Selection.CornerRadius(CornerRadiusHelper::FromUniformRadius(4));
+            cell.Selection.BorderThickness(ThicknessHelper::FromUniformLength(2));
+            cell.Selection.BorderBrush(ui::Res(L"AccentBrush"));
+            cell.Selection.IsHitTestVisible(false);
+            cell.Selection.Visibility(Visibility::Collapsed);
+            cell.Root.Children().Append(cell.Fill);
+            cell.Root.Children().Append(cell.Selection);
+            Grid::SetRow(cell.Root, i / cols);
+            Grid::SetColumn(cell.Root, i % cols);
+            grid.Children().Append(cell.Root);
             map.Cells.push_back(cell);
         }
     }
 
-    void MainPage::PaintMap(TrayMap& map, std::vector<int> const& states)
+    void MainPage::PaintMap(TrayMap& map, std::vector<int> const& states, std::vector<int> const& selected, bool anySelected)
     {
         for (size_t i = 0; i < map.Cells.size(); ++i)
         {
-            int state = i < states.size() ? states[i] : (int)scs::ECellState::Empty;
-            if (map.Shown[i] == state) continue;
-            map.Shown[i] = state;
-            map.Cells[i].Background(ui::Res(CellBrushKey(state)));
+            TrayCell& cell = map.Cells[i];
+            int state = i < states.size() ? states[i] : (int)scs::ECellState::Loaded;
+            if (cell.ShownState != state)
+            {
+                cell.ShownState = state;
+                cell.Fill.Background(ui::Res(CellBrushKey(state)));
+            }
+            bool isSelected = std::binary_search(selected.begin(), selected.end(), (int)i);
+            if (InDragRect(map, (int)i)) isSelected = m_drag.Add && (isSelected || cell.Selectable);
+            ui::Show(cell.Selection, isSelected);
+            const int dim = anySelected && !isSelected ? 1 : 0;
+            if (cell.ShownDim != dim)
+            {
+                cell.ShownDim = dim;
+                cell.Root.Opacity(dim ? 0.35 : 1.0);
+            }
         }
     }
 
+    // Chọn ô (AUTO), như TrayCard của ShieldCanSlit: chạm một ô = bật/tắt ô đó. Nhấn giữ một ô rồi kéo sang ô khác cùng tray = cả
+    // vùng chữ nhật giữa hai ô: ô bắt đầu chưa chọn → chọn cả vùng (chỉ ô chọn được), đã chọn → bỏ chọn cả vùng. Lúc kéo, viền
+    // chọn hiện trước kết quả; nhả mới áp.
+    void MainPage::HookTrayMap(int tray)
+    {
+        auto host = m_trayMaps[(size_t)tray].Host;
+        // ManipulationMode khác System: kéo bằng ngón tay bắt đầu trên lưới không bị ScrollViewer cha giành để cuộn giữa chừng.
+        host.ManipulationMode(Input::ManipulationModes::TranslateX | Input::ManipulationModes::TranslateY);
+        host.PointerPressed([weak = get_weak(), tray](auto&&, Input::PointerRoutedEventArgs const& e) {
+            if (auto self = weak.get()) self->OnMapPressed(tray, e);
+        });
+        host.PointerMoved([weak = get_weak(), tray](auto&&, Input::PointerRoutedEventArgs const& e) {
+            if (auto self = weak.get()) self->OnMapMoved(tray, e);
+        });
+        host.PointerReleased([weak = get_weak(), tray](auto&&, Input::PointerRoutedEventArgs const& e) {
+            if (auto self = weak.get()) self->OnMapReleased(tray, e);
+        });
+        auto cancel = [weak = get_weak()](auto&&, auto&&) {
+            if (auto self = weak.get())
+            {
+                self->CancelCellDrag();
+                self->UpdateTrays();
+            }
+        };
+        host.PointerCanceled(cancel);
+        host.PointerCaptureLost(cancel);
+    }
+
+    int MainPage::CellAt(TrayMap const& map, WF::Point p)
+    {
+        for (size_t i = 0; i < map.Cells.size(); ++i)
+        {
+            const auto& b = map.Cells[i].Bounds;
+            if (p.X >= b.X && p.X < b.X + b.Width && p.Y >= b.Y && p.Y < b.Y + b.Height) return (int)i;
+        }
+        return -1;
+    }
+
+    bool MainPage::InDragRect(TrayMap const& map, int cell) const
+    {
+        if (!m_drag.Active || m_drag.Tray != map.Tray) return false;
+        const auto [r0, r1] = std::minmax({ m_drag.Anchor / map.Cols, m_drag.End / map.Cols });
+        const auto [c0, c1] = std::minmax({ m_drag.Anchor % map.Cols, m_drag.End % map.Cols });
+        const int row = cell / map.Cols, col = cell % map.Cols;
+        return row >= r0 && row <= r1 && col >= c0 && col <= c1;
+    }
+
+    void MainPage::OnMapPressed(int tray, Input::PointerRoutedEventArgs const& e)
+    {
+        if (m_drag.Active || !scs::McControl::CanSelectCells()) return;   // ngón tay thứ hai lúc đang kéo: bỏ qua
+        TrayMap& map = m_trayMaps[(size_t)tray];
+        auto point = e.GetCurrentPoint(map.Host);
+        if (e.Pointer().PointerDeviceType() == winrt::Microsoft::UI::Input::PointerDeviceType::Mouse &&
+            !point.Properties().IsLeftButtonPressed())
+            return;
+        for (size_t i = 0; i < map.Cells.size(); ++i)
+        {
+            TrayCell& cell = map.Cells[i];
+            cell.Bounds = cell.Root.TransformToVisual(map.Host).TransformBounds(
+                { 0, 0, (float)cell.Root.ActualWidth(), (float)cell.Root.ActualHeight() });
+            cell.Selectable = scs::McControl::CanSelectCell(tray, (int)i);
+        }
+        const int index = CellAt(map, point.Position());
+        auto run = scs::McDataManager::RunData();
+        if (index < 0 || !run) return;   // khe giữa ô
+        m_drag.Active = true;
+        m_drag.PointerId = e.Pointer().PointerId();
+        m_drag.Tray = tray;
+        m_drag.Anchor = m_drag.End = index;
+        m_drag.Add = !run->Trays[(size_t)tray].IsSelected(index);
+        map.Host.CapturePointer(e.Pointer());   // kéo ra ngoài lưới / nhả ở ngoài vẫn nhận được
+        e.Handled(true);
+        UpdateTrays();
+    }
+
+    void MainPage::OnMapMoved(int tray, Input::PointerRoutedEventArgs const& e)
+    {
+        if (!m_drag.Active || m_drag.Tray != tray || e.Pointer().PointerId() != m_drag.PointerId) return;
+        e.Handled(true);
+        TrayMap& map = m_trayMaps[(size_t)tray];
+        const int index = CellAt(map, e.GetCurrentPoint(map.Host).Position());
+        if (index < 0 || index == m_drag.End) return;   // khe / ngoài lưới: giữ ô cuối
+        m_drag.End = index;
+        UpdateTrays();
+    }
+
+    void MainPage::OnMapReleased(int tray, Input::PointerRoutedEventArgs const& e)
+    {
+        if (!m_drag.Active || m_drag.Tray != tray || e.Pointer().PointerId() != m_drag.PointerId) return;
+        e.Handled(true);
+        TrayMap& map = m_trayMaps[(size_t)tray];
+        const bool tap = m_drag.Anchor == m_drag.End;
+        const int anchor = m_drag.Anchor;
+        const bool add = m_drag.Add;
+        std::vector<int> cells;
+        for (size_t i = 0; i < map.Cells.size(); ++i)
+            if (InDragRect(map, (int)i)) cells.push_back((int)i);
+        m_drag = {};   // trước khi nhả bắt chuột — PointerCaptureLost → CancelCellDrag thấy không còn kéo
+        map.Host.ReleasePointerCapture(e.Pointer());
+        if (tap) scs::McControl::ToggleCellSelection(tray, anchor);
+        else scs::McControl::SetCellsSelected(tray, cells, add);
+        UpdateTrays();
+    }
+
+    void MainPage::CancelCellDrag()
+    {
+        if (!m_drag.Active) return;
+        const int tray = m_drag.Tray;
+        m_drag = {};
+        m_trayMaps[(size_t)tray].Host.ReleasePointerCaptures();
+    }
+
     // 2 tray TrayRows × 7 ô (hàng = một lượt gắp, cột = nozzle). Chu trình ghi Routine_Auto::Trays lúc chạy; mới mở app
-    // (mảng rỗng / sai kích thước) thì suy từ RunningData.TrayRowsDone: hàng đã xong = Skipped, còn lại Loaded. Tray vắng
-    // (cảm biến tắt) tô Empty.
+    // (mảng rỗng / sai kích thước) thì suy từ RunningData.Trays: ô đã xong = Skipped, còn lại Loaded. Tray vắng
+    // (cảm biến tắt): mọi ô Loaded, dòng tóm tắt ghi No tray. Có ô chọn: viền 2 px ở ô chọn, mọi ô khác mờ 0.35 — như ô tray ShieldCanAssy.WinUI.
     void MainPage::UpdateTrays()
     {
         auto model = scs::McDataManager::Model();
         auto run = scs::McDataManager::RunData();
         if (!model || !run) return;
+        if (m_drag.Active && !scs::McControl::CanSelectCells()) CancelCellDrag();
         auto view = scs::Routine_Auto::Trays();
         auto sys = scs::McDataManager::SysData();
         auto io = scs::McControl::Io();
@@ -549,31 +736,51 @@ namespace winrt::ShieldCanLaser::implementation
         const int rows = std::max(1, model->Auto.TrayRows), cols = NozzleCount;
         const size_t size = (size_t)rows * (size_t)cols;
         std::array<TextBlock, TrayCount> summaries{ TraySummaryText1(), TraySummaryText2() };
+        const bool anySelected = run->HasCellSelection();
+        int selCount = 0;
         for (int t = 0; t < TrayCount; ++t)
         {
             const bool present = !sys || !sys->HasTraySensors || (io && io->GetDi(scs::IoMap::TrayPresent(t + 1)));
-            const int done = std::clamp(run->TrayRowsDone[t], 0, rows);
+            const scs::TrayCells& book = run->Trays[(size_t)t];
+            const int done = book.DoneCount((int)size);
+            const std::vector<int> selected = book.Selected();
+            selCount += (int)selected.size();
             std::vector<int> cells = view.Trays[(size_t)t];
             if (cells.size() != size)
             {
-                cells.assign(size, present ? (int)scs::ECellState::Loaded : (int)scs::ECellState::Empty);
-                if (present) std::fill(cells.begin(), cells.begin() + (size_t)done * cols, (int)scs::ECellState::Skipped);
+                cells.assign(size, (int)scs::ECellState::Loaded);
+                if (present)
+                    for (size_t i = 0; i < size; ++i)
+                        if (book.IsDone((int)i)) cells[i] = (int)scs::ECellState::Skipped;
             }
             else if (!present && CountOf(cells, scs::ECellState::Processing) == 0)
             {
-                cells.assign(size, (int)scs::ECellState::Empty);
+                cells.assign(size, (int)scs::ECellState::Loaded);
             }
-            LayoutMap(m_trayMaps[(size_t)t], (int)size, cols, 0, false);
-            PaintMap(m_trayMaps[(size_t)t], cells);
+            LayoutMap(m_trayMaps[(size_t)t], (int)size, cols, 0, true);
+            PaintMap(m_trayMaps[(size_t)t], cells, selected, anySelected);
             const int ok = CountOf(cells, scs::ECellState::Ok), ng = CountOf(cells, scs::ECellState::Ng);
-            std::string text = present ? std::format("{}/{} rows done", done, rows) : std::string("No tray");
+            std::string text = present ? std::format("{}/{} cells done", done, size) : std::string("No tray");
             if (ok + ng > 0) text += std::format(" · {} OK · {} NG", ok, ng);
+            if (!selected.empty()) text += std::format(" · {} selected", selected.size());
             ui::SetText(summaries[(size_t)t], text);
         }
+
+        auto clearCells = ClearCellsButton();
+        ui::Show(clearCells, selCount > 0);
+        clearCells.IsEnabled(!scs::McControl::CellSelectionLocked());
+        if (selCount != m_shownSelCount)
+        {
+            m_shownSelCount = selCount;
+            clearCells.Content(box_value(ui::H(std::format("Clear ({})", selCount))));
+        }
+        ui::SetText(TrayModeText(), selCount > 0 ? std::string("Runs selected cells only")
+                                    : scs::McControl::CanSelectCells() ? std::string("Tap or drag cells to run only those")
+                                                                        : std::string());
     }
 
-    // Dải nozzle: ô màu theo ECellState (Empty = không giữ can, Loaded = đang giữ, Processing = đang soi/khắc, Ok = đã
-    // khắc, Ng), chữ trạng thái và độ lệch dX / dZ đo ở CAM (chỉ khi HasDeviation).
+    // Dải nozzle: ô màu theo ECellState (Empty = không giữ can, Loaded = đang giữ, Processing = đang khắc/kiểm tra, Ok =
+    // kiểm tra đạt, Ng), chữ trạng thái và output Result của lần kiểm tra gần nhất (chỉ khi HasResult).
     void MainPage::UpdateNozzles()
     {
         auto noz = scs::Routine_Auto::Nozzles();
@@ -586,10 +793,10 @@ namespace winrt::ShieldCanLaser::implementation
             if (n.State != row.Shown)
             {
                 row.Shown = n.State;
-                row.Cell.Background(ui::Res(CellBrushKey(n.State)));
+                row.Cell.Background(ui::Res(n.State == (int)scs::ECellState::Loaded ? L"NozzleHoldingBrush" : CellBrushKey(n.State)));
             }
             ui::SetText(row.Text, n.Text.empty() ? std::string("—") : n.Text);
-            ui::SetText(row.Dev, n.HasDeviation ? std::format("dX {:+.3f}  dZ {:+.3f}", n.Dx, n.Dz) : std::string());
+            ui::SetText(row.ResultText, n.HasResult ? "Result " + scs::VmCycle::Fmt(n.Result) : std::string());
             if (n.State == (int)scs::ECellState::Loaded || n.State == (int)scs::ECellState::Processing) ++holding;
             else if (n.State == (int)scs::ECellState::Ok) ++ok;
             else if (n.State == (int)scs::ECellState::Ng) ++ng;
@@ -645,6 +852,37 @@ namespace winrt::ShieldCanLaser::implementation
         // Tự cuộn lên dòng mới nhất khi có dòng mới (bản WPF: ScrollIntoView(list[0]) lúc Add).
         if (added > 0)
             LogScroll().ChangeView(nullptr, WF::IReference<double>(0.0), nullptr, true);
+    }
+
+    // Cột Log giãn ra đẩy cột giữa, không trượt đè lên: control VisionMaster ở khung CAM là cửa sổ riêng, nằm trên mọi thứ
+    // của XAML nên sẽ che card. Mỗi khung hình popup của nó đi theo qua VmPane::Sync (gộp và xếp hàng, chỉ di chuyển khi đổi).
+    // Log vẫn cập nhật lúc ẩn: mở ra là thấy ngay dòng mới nhất.
+    void MainPage::OnLogToggleClick(WF::IInspectable const&, RoutedEventArgs const&)
+    {
+        if (m_drag.Active)   // Bounds chụp lúc nhấn: bố cục sắp đổi, kéo tiếp sẽ chọn sai ô
+        {
+            CancelCellDrag();
+            UpdateTrays();
+        }
+        m_logShown = !m_logShown;
+
+        // Bấm lại giữa chừng thì quay đầu từ chỗ đang dở, không giật — đọc trước khi Stop.
+        const double full = LogCard().Width() + LogCard().Margin().Right;
+        const double from = std::clamp(LogHost().ActualWidth() / full, 0.0, 1.0);
+        const double to = m_logShown ? 1.0 : 0.0;
+        if (m_logAnim) m_logAnim.Stop();
+
+        // Giá trị gốc = chỗ đang đứng, không phải đích: bố cục có chạy trước nhịp đầu của hiệu ứng thì card vẫn đứng yên, không
+        // nháy tới đích. Hết hiệu ứng, Storyboard giữ giá trị cuối (HoldEnd).
+        LogHost().Width(from * full);
+        LogCard().Opacity(from);
+        LogChevronRotate().Angle(from * 180.0);
+
+        m_logAnim = Storyboard();
+        m_logAnim.Children().Append(LogSlide(LogHost(), L"Width", from * full, to * full));
+        m_logAnim.Children().Append(LogSlide(LogCard(), L"Opacity", from, to));
+        m_logAnim.Children().Append(LogSlide(LogChevronRotate(), L"Angle", from * 180.0, to * 180.0));
+        m_logAnim.Begin();
     }
 
     // ══════════ Ảnh CAM (ảnh Bitmap chụp gần nhất) ══════════
@@ -801,7 +1039,7 @@ namespace winrt::ShieldCanLaser::implementation
         f.Pane.SetVisible(show == 1);
     }
 
-    // Gắn control vào Flow/module đặt ở trang Setting (mặc định cả Flow LocateCan). Chỉ gắn SAU khi McControl nạp xong
+    // Gắn control vào Flow/module đặt ở trang Setting (mặc định cả Flow kiểm tra). Chỉ gắn SAU khi McControl nạp xong
     // solution: nạp xong, VisionMasterDevice::LoadSolution tắt callback kết quả của mọi module, gắn trước đó thì bị tắt
     // theo (Tuấn 30/09: khung chỉ có nền caro). Nạp lại (VisionLoadCount đổi) thì gắn lại; đổi tên ở Setting thì gắn lại.
     // Chưa gắn được thì thử lại mỗi giây (như timer 1 s của bản WPF) — mỗi lần thử, RenderSource có thể chờ khoá SDK tới
@@ -918,14 +1156,31 @@ namespace winrt::ShieldCanLaser::implementation
 
     // ══════════ Lệnh ══════════ Request* chỉ đặt cờ — vòng quét của McControl quyết định làm gì (interlock ở đó).
 
-    void MainPage::OnAutoClick(WF::IInspectable const&, RoutedEventArgs const&)
+    // Công tắc AUTO/MANUAL như ShieldCanAssy.WinUI: chạm vào đâu trên thanh cũng đổi sang chế độ kia.
+    void MainPage::OnModeSwitchTapped(WF::IInspectable const&, Input::TappedRoutedEventArgs const&)
     {
-        scs::McControl::RequestSetMode(scs::EMcMode::Auto);
+        const bool isAuto = scs::McControl::Status().Mode() == scs::EMcMode::Auto;
+        scs::McControl::RequestSetMode(isAuto ? scs::EMcMode::Manual : scs::EMcMode::Auto);
     }
 
-    void MainPage::OnManualClick(WF::IInspectable const&, RoutedEventArgs const&)
+    void MainPage::OnModeSwitchPointerEntered(WF::IInspectable const&, Input::PointerRoutedEventArgs const&)
     {
-        scs::McControl::RequestSetMode(scs::EMcMode::Manual);
+        ModeSwitch().Background(ui::Solid(0x17000000));
+    }
+
+    void MainPage::OnModeSwitchPointerExited(WF::IInspectable const&, Input::PointerRoutedEventArgs const&)
+    {
+        ModeSwitch().Background(ui::Solid(0x0F000000));
+    }
+
+    void MainPage::OnModeSwitchPointerPressed(WF::IInspectable const&, Input::PointerRoutedEventArgs const&)
+    {
+        ModeSwitch().Background(ui::Solid(0x1F000000));
+    }
+
+    void MainPage::OnModeSwitchPointerReleased(WF::IInspectable const&, Input::PointerRoutedEventArgs const&)
+    {
+        ModeSwitch().Background(ui::Solid(0x17000000));
     }
 
     // Nút mềm CỐ Ý chỉ đưa máy vào sẵn sàng (Armed) — máy chạy thật chỉ nhận từ nút START vật lý
@@ -965,6 +1220,12 @@ namespace winrt::ShieldCanLaser::implementation
     {
         if (auto run = scs::McDataManager::RunData()) run->ResetCounters();
         UpdateCounters();
+    }
+
+    void MainPage::OnClearCellsClick(WF::IInspectable const&, RoutedEventArgs const&)
+    {
+        scs::McControl::ClearCellSelection();
+        UpdateTrays();
     }
 
     // RESET TRAY: đặt lại tiến độ 2 tray (lưu running.json) — đang chờ thay tray thì bằng bấm START; đang chạy thì từ chối

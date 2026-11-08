@@ -1,6 +1,7 @@
 #include "Vision/VisionMasterDevice.h"
 
 #include "Base/Async.h"
+#include "Base/Text.h"
 #include "Communication/VisionConnect.h"
 #include "Vision/VmImageConvert.h"
 
@@ -23,12 +24,7 @@
 #pragma warning(disable: 4819 4996 4251 4275)
 #include "IVmSolution.h"
 #include "IVmProcedure.h"
-#include "IVmGlobalVariable.h"
-#pragma warning(push)
-#pragma warning(disable : 4091)   // MVD_AlgoParamDefine.h của SDK: typedef enum không đặt tên biến
-#include "IVmNPointCalib.h"
-#include "IVmTranslationCalib.h"
-#pragma warning(pop)
+#include "IVmGroup.h"
 #include "VMException.h"
 #include "iMVS-6000PlatformSDKC.h"
 #pragma warning(pop)
@@ -46,7 +42,8 @@ namespace scs
         using Solution = vm::VmSolution::IVmSolution;
         using Procedure = vm::VmProcedure::IVmProcedure;
         using ProcResults = vm::VmProcedure::IMVSProcedureResults;
-        using GlobalTool = vm::GlobalVariableModule::GlobalVariableModuleTool;
+        using GroupTool = vm::IMVSGroup::IMVSGroupTool;
+        using GroupResults = vm::IMVSGroup::IMVSGroupResults;
 
         constexpr int CodeProcedureNotFound = static_cast<int>(0xE0000316);   // IMVS_EC_MODULE_PROCEDURE_NOT_FOUND
         constexpr int CodeModuleNotFound = static_cast<int>(0xE0000302);      // IMVS_EC_MODULE_NOT_FOUND
@@ -98,21 +95,6 @@ namespace scs
                                         "or PATH missing Applications\\PublicFile\\x64");
         }
 
-        /// VmIoType của SDK C++ (IVmDynamicIoDefine.h) → mã IMVS_MODULE_BASE_DATA_TYPE mà bản .NET trả và
-        /// VmOutCheck hiểu (13 = int, 14 = float, 15 = chuỗi, 1 = ảnh, 0 = không xác định). Enum .NET đó
-        /// không có trong header C++ nên phải đổi tay.
-        int TypeCodeOf(vm::VmIoType t)
-        {
-            switch (t)
-            {
-            case vm::IO_TYPE_INT: return VmOutCheck::TypeInt;
-            case vm::IO_TYPE_FLOAT: return VmOutCheck::TypeFloat;
-            case vm::IO_TYPE_STRING: return 15;
-            case vm::IO_TYPE_IMAGE: return 1;
-            default: return 0;
-            }
-        }
-
         struct RunSignal
         {
             std::mutex mutex;
@@ -150,9 +132,11 @@ namespace scs
         /// Vì sao cần cả hai: nhiều kết quả tự nhiên của VisionMaster là Int (Module Status, Match Num,
         /// CalibPointNum) và giao diện khai output của Flow lọc danh sách Subscribe theo kiểu. Output sai
         /// kiểu làm GetOutputFloat trả rỗng y như output không tồn tại — Tuấn dính lỗi này 2026-09-12.
-        /// Chỉ lấy phần tử [0]: module định vị phải đặt "Max Number to Find = 1".
-        /// SDK: IMVSProcedureResults::GetOutputFloat / GetOutputInt (IVmProcedure.h) — chưa chạy được ở máy dev.
-        bool TryReadNumber(ProcResults* res, const std::string& name, float& value)
+        /// Chỉ lấy phần tử [0]. Dùng cho cả Flow lẫn Group — hai lớp kết quả có cùng hai hàm đọc.
+        /// SDK: IMVSProcedureResults / IMVSGroupResults ::GetOutputFloat / GetOutputInt (IVmProcedure.h, IVmGroup.h) —
+        /// chưa chạy được ở máy dev.
+        template <class Results>
+        bool TryReadNumber(Results* res, const std::string& name, float& value)
         {
             value = 0.0f;
             if (!res) return false;
@@ -171,7 +155,7 @@ namespace scs
             return false;
         }
 
-        /// Ảnh chỉ để hiển thị, không phải số dùng để tính lượng bù — lỗi thì im lặng trả nullptr.
+        /// Ảnh chỉ để hiển thị, không phải số dùng để phán OK/NG — lỗi thì im lặng trả nullptr.
         /// SDK: IMVSProcedureResults::GetOutputImageV2 → IoImage.stImage (mẫu GetResultControlDlg.cpp dòng
         /// "GetOutputImageV2("ImageData")") — chưa chạy được ở máy dev.
         std::shared_ptr<const ImageData> TryReadImage(ProcResults* res, const std::string& name)
@@ -184,19 +168,6 @@ namespace scs
                 return VmImageToImageData(b.ImageData, b.DataLen, b.Width, b.Height, static_cast<unsigned>(b.Pixelformat));
             }
             catch (...) { return nullptr; }
-        }
-
-        template <class T>
-        T ParseInvariant(const std::string& text, const char* kind)
-        {
-            T v{};
-            const char* b = text.data();
-            const char* e = b + text.size();
-            while (b < e && (*b == ' ' || *b == '+')) ++b;
-            auto r = std::from_chars(b, e, v);
-            if (r.ec != std::errc() || r.ptr != e)
-                throw std::invalid_argument("Value \"" + text + "\" is not a valid " + kind);
-            return v;
         }
     }
 
@@ -332,144 +303,47 @@ namespace scs
             return Sdk("Get Flow result", [&] { return proc->GetResult(); });
         }
 
-        // ───────────────────────── biến toàn cục của solution ─────────────────────────
+        // ───────────────────────── Group kiểm tra ─────────────────────────
 
-        /// Module Global Variable của solution đang nạp. SDK C++ có hẳn hàm lấy module này
-        /// (GetGlobalVariableToolInstance, IVmGlobalVariable.h) nên không cần tên gợi ý
-        /// <c>VisionOutputs.GlobalVarModule</c> như bản .NET — và cũng không ép kiểu mù một void* theo tên.
-        GlobalTool* GetGlobalVarModule()
+        static bool IsGroupType(const std::string& type) { return type.rfind("IMVSGroup", 0) == 0; }
+
+        /// Rỗng = tên cuối của <paramref name="path"/> ("Flow.Group", "Flow.Group1.Group2") là một module loại Group trong
+        /// danh sách module của Flow (GetAllModuleList trả cả module nằm trong Group); khác rỗng = lý do. Loại module đọc từ
+        /// strModuleName (tên lớp của SDK), không dựa vào tên hiển thị.
+        std::string FindGroup(Procedure* proc, const std::string& flow, const std::string& path)
         {
-            GlobalTool* tool = Sdk("Get Global Variable module", [] { return ::GetGlobalVariableToolInstance(); });
-            if (!tool) throw NoGlobalModule(-1);
-            return tool;
+            if (path.size() <= flow.size() + 1 || path.compare(0, flow.size() + 1, flow + ".") != 0)
+                return "Path \"" + path + "\" is not inside Flow \"" + flow + "\"";
+            std::string rest = path.substr(flow.size() + 1);
+            std::size_t lastDot = rest.rfind('.');
+            std::string leaf = lastDot == std::string::npos ? rest : rest.substr(lastDot + 1);
+
+            ::ModuleInfoList* list = Sdk("Read Flow module list", [&] { return proc->GetAllModuleList(); });
+            if (!list) return "SDK returned no module list for Flow \"" + flow + "\"";
+            std::string groups;
+            for (unsigned i = 0; i < list->nNum && i < std::size(list->astModuleInfo); ++i)
+            {
+                std::string type = Str(list->astModuleInfo[i].strModuleName);
+                std::string display = Str(list->astModuleInfo[i].strDisplayName);
+                if (display == leaf)
+                    return IsGroupType(type) ? std::string() : "Module \"" + leaf + "\" in Flow \"" + flow + "\" is not a Group (type " + type + ")";
+                if (IsGroupType(type)) groups += (groups.empty() ? "" : ", ") + display;
+            }
+            return "Group \"" + leaf + "\" not found in Flow \"" + flow + "\"" + (groups.empty() ? std::string(" — Flow has no Group") : " — Groups in this Flow: " + groups);
         }
 
-        static VisionDeviceError NoGlobalModule(int code)
+        /// Group đã đối chiếu bằng <see cref="FindGroup"/> rồi mới ép void* của operator[] (trả void* cho mọi module).
+        /// SDK: IVmSolution::operator["Flow.Group"] (mẫu GetResultControlDlg.cpp ép kiểu y như vậy).
+        GroupTool* GetGroup(Procedure* proc, const std::string& flow, const std::string& path)
         {
-            return VisionDeviceError("Solution has no Global Variable module — add it to the solution "
-                                     "(Global Module › Global Variable) and declare the axis variables", code);
-        }
-
-        /// Tên → kiểu (float/int/string) của mọi biến toàn cục đang khai. Không đọc được thì NÉM LỖI — dùng để
-        /// quyết định tạo biến nên không được coi "không đọc được" là "chưa có biến nào".
-        /// SDK: GlobalVariableModuleTool::GetAllGlobalVar → GlobalVarInfoList (IVmGlobalVariable.h).
-        std::map<std::string, std::string> GetGlobalVarTypes()
-        {
-            GlobalTool* tool = GetGlobalVarModule();
-            vm::GlobalVariableModule::GlobalVarInfoList* all = nullptr;
-            try { all = tool->GetAllGlobalVar(); }
-            catch (const vm::CVmException& e)
-            {
-                if (e.GetErrorCode() == CodeModuleNotFound) throw NoGlobalModule(e.GetErrorCode());
-                throw VisionDeviceError(Describe("Read global variable list", e), e.GetErrorCode());
-            }
-            catch (...) { throw VisionDeviceError("Read global variable list: VisionMaster SDK threw unknown error", -2); }
-            if (!all) throw VisionDeviceError("Global Variable module returned null variable list");
-
-            std::map<std::string, std::string> d;
-            for (int i = 0; i < all->nCount && i < static_cast<int>(std::size(all->stGlobalValue)); ++i)
-            {
-                std::string name = Str(all->stGlobalValue[i].strValueName);
-                if (!name.empty()) d[name] = Str(all->stGlobalValue[i].strValueType);
-            }
-            return d;
-        }
-
-        /// Ghi theo đúng kiểu đang khai trong solution: <c>int</c> (biến rẽ nhánh IsTopLocate — Module rẽ nhánh nhận int)
-        /// thì SetVarInt, còn lại SetVarFloat — như ShieldCanAssy, lỡ khai float vẫn chạy.
-        void WriteNumber(GlobalTool* tool, const std::string& name, double value, const std::string& type)
-        {
-            if (type == "int")
-            {
-                // SDK: CVariable::SetVarInt(name, int*, n) (Variable.h).
-                int n = static_cast<int>(std::llround(value));
-                try { tool->SetVarInt(name.c_str(), &n, 1); }
-                catch (const vm::CVmException& e)
-                {
-                    if (e.GetErrorCode() == CodeModuleNotFound) throw NoGlobalModule(e.GetErrorCode());
-                    throw VisionDeviceError(Describe("Write global variable \"" + name + "\"", e), e.GetErrorCode());
-                }
-                catch (...) { throw VisionDeviceError("Write global variable \"" + name + "\": VisionMaster SDK threw unknown error", -2); }
-                return;
-            }
-            WriteFloat(tool, name, value);
-        }
-
-        void WriteFloat(GlobalTool* tool, const std::string& name, double value)
-        {
-            // SDK: CVariable::SetVarFloat(name, float*, n) (Variable.h) — nhận số nhị phân, không qua chuỗi.
-            // GetGlobalVariableToolInstance trả con trỏ khác null cả khi solution KHÔNG có module Global Variable
-            // (đo ở máy dev); khi đó lời ghi ném IMVS_EC_MODULE_NOT_FOUND — đổi về đúng câu của bản C#.
-            float f = static_cast<float>(value);
-            try { tool->SetVarFloat(name.c_str(), &f, 1); }
-            catch (const vm::CVmException& e)
-            {
-                if (e.GetErrorCode() == CodeModuleNotFound) throw NoGlobalModule(e.GetErrorCode());
-                throw VisionDeviceError(Describe("Write global variable \"" + name + "\"", e), e.GetErrorCode());
-            }
-            catch (...) { throw VisionDeviceError("Write global variable \"" + name + "\": VisionMaster SDK threw unknown error", -2); }
-        }
-
-        /// Ghi vị trí trục thật vào biến toàn cục (đường nạp điểm hiệu chuẩn, Tuấn chốt 2026-09-12). Tên biến
-        /// chưa có trong solution thì ném lỗi kèm danh sách biến đang có — thà dừng còn hơn nạp một điểm hiệu
-        /// chuẩn với toạ độ cũ mà không ai biết. Không đọc được danh sách thì bỏ qua phép đối chiếu tên thay
-        /// vì chặn cả phép hiệu chuẩn.
-        void SetGlobalFloats(const std::map<std::string, double>& vars)
-        {
-            if (vars.empty()) return;
-            GlobalTool* tool = GetGlobalVarModule();
-
-            // Bản C# ném "không có module Global Variable" ngay khi không tìm thấy module; còn đọc danh sách lỗi vì
-            // lý do khác thì bỏ qua đối chiếu tên. SDK C++ chỉ lộ "không có module" qua mã lỗi của lời đọc danh sách
-            // (đo ở máy dev 2026-10-06: GetAllGlobalVar ném 0xE0000302, còn SetVarFloat ném 0xE000000A).
-            std::map<std::string, std::string> declared;
-            try { declared = GetGlobalVarTypes(); }
-            catch (const VisionDeviceError& e)
-            {
-                if (e.Code == CodeModuleNotFound) throw;
-                declared.clear();
-            }
-            catch (...) { declared.clear(); }
-
-            for (auto& kv : vars)
-            {
-                if (kv.first.empty()) continue;
-                auto it = declared.find(kv.first);
-                if (!declared.empty() && it == declared.end())
-                {
-                    std::string have;
-                    for (auto& d : declared) have += (have.empty() ? "" : ", ") + d.first;
-                    throw VisionDeviceError("Global variable \"" + kv.first + "\" not declared in solution — available: " + have);
-                }
-                WriteNumber(tool, kv.first, kv.second, it == declared.end() ? std::string("float") : it->second);
-            }
-        }
-
-        /// Ghi biến toàn cục cho chu trình mới — NGHIÊM: tên trống, không đọc được danh sách biến, tên chưa
-        /// khai, hay giá trị không hữu hạn đều ném lỗi và KHÔNG ghi biến nào.
-        void SetGlobalFloatsStrict(const std::map<std::string, double>& vars)
-        {
-            if (vars.empty()) return;
-            GlobalTool* tool = GetGlobalVarModule();
-
-            std::map<std::string, std::string> declared;
-            for (auto& kv : GetGlobalVarTypes())
-            {
-                std::string n = kv.first;
-                if (n.size() > 1 && n.front() == '%' && n.back() == '%') n = n.substr(1, n.size() - 2);
-                declared[n] = kv.second;
-            }
-
-            for (auto& kv : vars)
-            {
-                if (kv.first.empty())
-                    throw VisionDeviceError("Empty global variable name — check axis variable names on Setting page");
-                if (declared.find(kv.first) == declared.end())
-                    throw VisionDeviceError("Global variable \"" + kv.first + "\" not declared in solution — press CHECK VARS on Setting page");
-                if (!std::isfinite(kv.second))
-                    throw VisionDeviceError("Value for variable \"" + kv.first + "\" is not finite");
-            }
-            for (auto& kv : vars) WriteNumber(tool, kv.first, kv.second, declared[kv.first]);
+            std::string why = FindGroup(proc, flow, path);
+            if (!why.empty()) throw VisionDeviceError(why);
+            void* p = nullptr;
+            try { p = (*sol)[path.c_str()]; }
+            catch (const vm::CVmException& e) { throw VisionDeviceError(Describe("Find Group \"" + path + "\"", e), e.GetErrorCode()); }
+            catch (...) { throw VisionDeviceError("Find Group \"" + path + "\": VisionMaster SDK threw unknown error", -2); }
+            if (!p) throw VisionDeviceError("Group \"" + path + "\" not found in solution");
+            return static_cast<GroupTool*>(p);
         }
 
         /// SDK: IVmSolution::SaveSolution (IVmSolution.h) — lưu vào chính file .solw đang nạp.
@@ -586,91 +460,17 @@ namespace scs
         return true;
     }
 
-    VisionPose VisionMasterDevice::TriggerCalib(EVisionProcedure procedure, const AxisSnapshot& axes, std::stop_token ct)
+    std::string VisionMasterDevice::CheckModulePath(const std::string& path)
     {
-        VisionOutputNames names = m->Names();
-        std::string flow = VisionConnect::FlowNameOf(names, procedure);
-
         std::lock_guard<std::recursive_timed_mutex> lock(m->sdk);
-        if (!m->sol || !m->loaded) return VisionPose::NotFound("Solution not loaded");
+        if (!m->sol || !m->loaded) return "Solution not loaded";
 
-        // Ghi trước, chạy sau, trong cùng một lượt: vị trí trục + biến rẽ nhánh = 0 (nhánh hiệu chuẩn của Flow soi).
-        m->SetGlobalFloats(VisionConnect::CalibVars(names, axes));
-
+        std::string p = base::Trim(path);
+        std::string flow = base::Trim(p.substr(0, p.find('.')));
         bool hasId = false;
         unsigned id = 0;
-        Procedure* proc = m->GetProcedure(flow, hasId, id);
-        bool wantImage = !names.OutImage.empty();
-        ProcResults* res = m->RunFlow(proc, hasId, id, wantImage, ct);
-
-        float found = 0.0f;
-        if (!TryReadNumber(res, names.OutFound, found))
-            throw VisionDeviceError("Flow \"" + flow + "\" missing output \"" + names.OutFound + "\" — check output variables in solution");
-        // Ảnh không bắt buộc: chưa khai output ảnh (hoặc lấy ảnh lỗi) thì ảnh là nullptr nhưng KHÔNG ném lỗi.
-        std::shared_ptr<const ImageData> image = wantImage ? TryReadImage(res, names.OutImage) : nullptr;
-
-        m->SetImage(image, axes.Nozzle);
-
-        // Flow nạp điểm chỉ cần báo thấy hay không — module hiệu chuẩn tự giữ điểm vừa nạp.
-        if (found > 0.5f) { VisionPose p; p.Found = true; return p; }
-        return VisionPose::NotFound("Solution reports not found");
-    }
-
-    CalibClearResult VisionMasterDevice::ClearCalibPoints(EVisionProcedure procedure)
-    {
-        VisionOutputNames names = m->Names();
-        std::string flow = VisionConnect::FlowNameOf(names, procedure);
-
-        std::lock_guard<std::recursive_timed_mutex> lock(m->sdk);
-        if (!m->sol || !m->loaded) return CalibClearResult::Fail("Solution not loaded");
-
-        bool hasId = false;
-        unsigned id = 0;
-        Procedure* proc = m->GetProcedure(flow, hasId, id);
-        ::ModuleInfoList* list = Sdk("Read Flow module list", [&] { return proc->GetAllModuleList(); });
-        if (!list) return CalibClearResult::Fail("SDK returned no module list for Flow \"" + flow + "\"");
-
-        // Loại module đọc từ strModuleName (tên lớp của SDK, vd. IMVSNPointCalibModu / TranslationCalibModu) — KHÔNG dựa
-        // vào tên hiển thị người dựng solution đặt. Calibration Transformation (CalibTransform) không phải module nạp điểm.
-        // Module lấy bằng hàm xuất có kiểu của SDK theo đường dẫn "Flow.Module" (IVmNPointCalib.h, IVmTranslationCalib.h).
-        CalibClearResult result;
-        std::vector<std::string> seen;
-        for (unsigned i = 0; i < list->nNum && i < std::size(list->astModuleInfo); ++i)
-        {
-            std::string type = Str(list->astModuleInfo[i].strModuleName);
-            std::string display = Str(list->astModuleInfo[i].strDisplayName);
-            seen.push_back(display + " (" + type + ")");
-            bool nPoint = type.find("NPointCalib") != std::string::npos;
-            bool translation = type.find("TranslationCalib") != std::string::npos;
-            if (!nPoint && !translation) continue;
-
-            std::string path = flow + "." + display;
-            int rc = 0;
-            if (nPoint)
-            {
-                auto* t = Sdk("Get N-point Calibration module", [&] { return ::GetNPointCalibToolInstance(path.c_str()); });
-                auto* params = t ? Sdk("Get module params", [&] { return t->GetParamObj(); }) : nullptr;
-                if (!params) return CalibClearResult::Fail("Failed to get module \"" + path + "\" (move it out of any Group)");
-                rc = Sdk("Clear Point", [&] { return params->DoClearPoint(); });
-            }
-            else
-            {
-                auto* t = Sdk("Get Translation Calibration module", [&] { return ::GetTranslationCalibToolInstance(path.c_str()); });
-                auto* params = t ? Sdk("Get module params", [&] { return t->GetParamObj(); }) : nullptr;
-                if (!params) return CalibClearResult::Fail("Failed to get module \"" + path + "\" (move it out of any Group)");
-                rc = Sdk("Clear Point", [&] { return params->DoClearPoint(); });
-            }
-            if (rc != IMVS_EC_OK) return CalibClearResult::Fail("Clear Point of \"" + path + "\" returned error code " + Hex(rc));
-            result.Modules.push_back(display);
-        }
-        if (result.Modules.empty())
-        {
-            std::string have;
-            for (auto& x : seen) have += (have.empty() ? "" : ", ") + x;
-            return CalibClearResult::Fail("Flow \"" + flow + "\" has no N-point / Translation Calibration module"
-                                          + (have.empty() ? std::string() : " — available: " + have));
-        }
-        return result;
+        Procedure* proc = m->GetProcedure(flow, hasId, id);   // không có Flow thì ném, VisionConnect trả lý do
+        return m->FindGroup(proc, flow, p);
     }
 
     VmCallResult VisionMasterDevice::CallFlow(const VmCallRequest& request, std::stop_token ct)
@@ -681,131 +481,37 @@ namespace scs
         std::lock_guard<std::recursive_timed_mutex> lock(m->sdk);
         if (!m->sol || !m->loaded) return VmCallResult::Fail("Solution not loaded");
 
-        // Ghi biến, chạy, đọc ngay — cùng một lượt.
-        m->SetGlobalFloatsStrict(request.Globals);
-
         bool hasId = false;
         unsigned id = 0;
         Procedure* proc = m->GetProcedure(request.Flow, hasId, id);
+        // Group tra TRƯỚC khi chạy: đường dẫn sai thì không kích camera. LoadSolution đã tắt callback kết quả của mọi
+        // module — bật lại cho riêng Group này, tắt thì GetResult() của nó không có số của lần chạy vừa rồi
+        // (CVmToolBase::EnableResultCallback, VmToolBase.h).
+        GroupTool* group = request.Module.empty() ? nullptr : m->GetGroup(proc, request.Flow, request.Module);
+        if (group) Sdk("Enable Group result callback", [&] { group->EnableResultCallback(); });
         bool wantImage = request.Camera != EVmCamera::None && !names.OutImage.empty();
         ProcResults* res = m->RunFlow(proc, hasId, id, wantImage, ct);
+
+        // SDK: IMVSGroupTool::GetResult() — NULL khi Group không chạy hoặc chạy lỗi ở lần này (IVmGroup.h).
+        GroupResults* groupRes = group ? Sdk("Get Group result", [&] { return group->GetResult(); }) : nullptr;
+        if (group && !groupRes) throw VisionDeviceError("Group \"" + request.Module + "\" did not run or failed in this run — no result");
 
         VmCallResult result;
         for (auto& name : request.Outputs)
         {
             float v = 0.0f;
-            if (!TryReadNumber(res, name, v))
-                throw VisionDeviceError("Flow \"" + request.Flow + "\" missing output \"" + name + "\" — check Flow Output Params");
+            bool ok = group ? TryReadNumber(groupRes, name, v) : TryReadNumber(res, name, v);
+            if (!ok)
+                throw VisionDeviceError("\"" + (group ? request.Module : request.Flow) + "\" missing output \"" + name +
+                                        "\" — check its Output Params (int or float)");
             result.Values[name] = v;
-        }
-        // Thiếu output tuỳ chọn thì chỉ ghi nhận — tư thế khớp mẫu thường rỗng khi không thấy vật.
-        for (auto& name : request.OptionalOutputs)
-        {
-            float v = 0.0f;
-            if (TryReadNumber(res, name, v)) result.Values[name] = v;
-            else result.MissingOptional.push_back(name);
         }
 
         std::shared_ptr<const ImageData> image = wantImage ? TryReadImage(res, names.OutImage) : nullptr;
-        if (request.Camera != EVmCamera::None) m->SetImage(image, VisionConnect::NozzleOf(names, request.Globals));
+        if (request.Camera != EVmCamera::None) m->SetImage(image, request.Nozzle);
 
         result.Ok = true;
         return result;
-    }
-
-    VmFlowOutputs VisionMasterDevice::ReadFlowOutputs(const std::string& flow)
-    {
-        std::lock_guard<std::recursive_timed_mutex> lock(m->sdk);
-        if (!m->sol || !m->loaded) return VmFlowOutputs::Fail(flow, "Solution not loaded");
-
-        bool hasId = false;
-        unsigned id = 0;
-        Procedure* proc = m->GetProcedure(flow, hasId, id);
-
-        VmFlowOutputs r;
-        r.Flow = flow;
-
-        // Danh sách output Flow đang khai — đúng những tên hiện trong tab Output Params. KHÔNG gọi Run().
-        // SDK: IVmProcedure::GetResult()->GetAllOutputNameInfo() → IoNameInfoArray (IVmProcedure.h,
-        // IVmDynamicIoDefine.h). Bản .NET ghi nhận 19/09: nguồn này trả 0 với Flow chưa chạy lần nào; nguồn thứ
-        // hai của bản .NET (VmModule.Outputs của chính Flow) KHÔNG có trong SDK C++.
-        std::set<std::string> seen;
-        ProcResults* res = Sdk("Get Flow result", [&] { return proc->GetResult(); });
-        if (res)
-        {
-            vm::IoNameInfoArray outs = Sdk("Read Flow Output Params", [&] { return res->GetAllOutputNameInfo(); });
-            for (int i = 0; outs.pstIo != nullptr && i < outs.nNameNum; ++i)
-            {
-                std::string name = VmOutCheck::CleanIoName(Str(outs.pstIo[i].strIoName));
-                if (!name.empty() && seen.insert(name).second) r.AddDeclared(name, TypeCodeOf(outs.pstIo[i].nType));
-            }
-        }
-
-        // Số Input Params còn sót (hợp đồng bỏ Input Params từ 2026-09-14 — còn sót là rác bản cũ, không phải lỗi).
-        // SDK: IVmProcedure::GetParamObj()->GetAllInputNameInfo() (IVmProcedure.h).
-        try
-        {
-            auto* prm = proc->GetParamObj();
-            r.InputParamCount = prm ? prm->GetAllInputNameInfo().nNameNum : -1;
-        }
-        catch (...) { r.InputParamCount = -1; }
-
-        // Modules để RỖNG có chủ ý: SDK C++ không có đường nào đọc hai tab Input/Output Params của một module
-        // bất kỳ kèm ô Subscribe (VmModule.Inputs/Outputs, VmIO.SubscriptionInfo chỉ có ở SDK .NET). Rỗng thì
-        // phần kiểm Script nói thẳng "SDK không duyệt được" thay vì báo thiếu/chưa bind sạch.
-        return r;
-    }
-
-    GlobalVarSyncReport VisionMasterDevice::SyncGlobalVariables(const std::vector<GlobalVarSpec>& specs, bool apply)
-    {
-        /// Kho biến toàn cục của solution thật.
-        struct Store final : IGlobalVarStore
-        {
-            Impl* m{ nullptr };
-
-            std::map<std::string, std::string> ReadAll() override { return m->GetGlobalVarTypes(); }
-
-            /// Bản .NET tạo biến bằng VM.ExtensionMethod.GlobalVariableHelper.AddVar — hàm nội bộ của cửa sổ
-            /// Global Variable, không có trong tài liệu và KHÔNG có trong SDK C++ (GlobalVariableModuleTool chỉ
-            /// có đọc/ghi giá trị). Vì vậy bản C++ chỉ KIỂM được, không tạo được.
-            void Add(const std::string& name, const std::string& type, const std::string&) override
-            {
-                throw VisionDeviceError("VisionMaster C++ SDK cannot create global variables — create variable \"" + name +
-                                        "\" (type " + type + ") in the VisionMaster Global Variable window, then save the solution");
-            }
-
-            /// Ghi qua hàm ghi theo kiểu (số nhị phân, không qua chuỗi số theo culture Windows).
-            /// SDK: CVariable::SetVarFloat / SetVarInt / SetVarString (Variable.h).
-            void SetValue(const std::string& name, const std::string& type, const std::string& invariantValue) override
-            {
-                GlobalTool* tool = m->GetGlobalVarModule();
-                if (type == "float")
-                {
-                    float f = ParseInvariant<float>(invariantValue, "float");
-                    Sdk("Write global variable", [&] { tool->SetVarFloat(name.c_str(), &f, 1); });
-                }
-                else if (type == "int")
-                {
-                    int n = ParseInvariant<int>(invariantValue, "integer");
-                    Sdk("Write global variable", [&] { tool->SetVarInt(name.c_str(), &n, 1); });
-                }
-                else
-                {
-                    auto data = std::make_unique<vm::InputStringData>();
-                    std::memset(data.get(), 0, sizeof(vm::InputStringData));
-                    std::memcpy(data->strValue, invariantValue.data(), std::min(invariantValue.size(), sizeof(data->strValue) - 1));
-                    Sdk("Write global variable", [&] { tool->SetVarString(name.c_str(), data.get(), 1); });
-                }
-            }
-
-            std::string Save() override { m->Save(); return {}; }
-        };
-
-        std::lock_guard<std::recursive_timed_mutex> lock(m->sdk);
-        if (!m->sol || !m->loaded) return GlobalVarSyncReport::Fail("Vision solution not loaded");
-        Store store;
-        store.m = m.get();
-        return GlobalVarSync::Run(&store, specs, apply);
     }
 
     std::string VisionMasterDevice::SaveSolution()

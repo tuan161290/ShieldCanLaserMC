@@ -78,13 +78,11 @@ namespace scs
         /// <see cref="IsSolutionLoaded"/> giữ nguyên giá trị cũ, như bản C#.</summary>
         bool LoadSolution(const std::string& solutionPath) override;
 
-        VisionPose TriggerCalib(EVisionProcedure procedure, const AxisSnapshot& axes, std::stop_token ct) override;
-        /// <summary>Duyệt module của Flow (<c>IVmProcedure::GetAllModuleList</c>), module nào là N-point Calibration hoặc
-        /// Translation Calibration thì gọi <c>GetParamObj()->DoClearPoint()</c> — như <c>ModuParams.DoClearPoint()</c> bản
-        /// .NET của ShieldCanAssy.</summary>
-        CalibClearResult ClearCalibPoints(EVisionProcedure procedure) override;
-        GlobalVarSyncReport SyncGlobalVariables(const std::vector<GlobalVarSpec>& specs, bool apply) override;
-        VmFlowOutputs ReadFlowOutputs(const std::string& flow) override;
+        /// <summary>Flow có trong solution (<c>GetAllProcedureList</c>) và tên cuối của đường dẫn là một module loại Group
+        /// trong Flow đó (<c>IVmProcedure::GetAllModuleList</c>). Không chạy Flow.</summary>
+        std::string CheckModulePath(const std::string& path) override;
+        /// <summary>Chạy Flow; <see cref="VmCallRequest::Module"/> khác rỗng thì đọc output của Group đó
+        /// (<c>IMVSGroupTool::GetResult</c>), không thì Output Params của Flow.</summary>
         VmCallResult CallFlow(const VmCallRequest& request, std::stop_token ct) override;
         std::string SaveSolution() override;
 

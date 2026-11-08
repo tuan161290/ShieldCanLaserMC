@@ -10,17 +10,21 @@ namespace scs
     /// ngõ ra (như máy Slit Assy). Ngõ vào đánh số <b>X000…X031</b>, ngõ ra <b>Y000…Y031</b> (thập phân, = chỉ số bit
     /// ở đây). Bit DI/DO nối liên tục theo thứ tự module trong rack (EtherCatIoDevice).
     ///
-    /// <para><b>BẢN TẠM</b> (PLAN-LASER.md §5): máy Laser Marking chưa có sơ đồ điện — số chân xếp theo thứ tự hợp lý,
-    /// chốt lại theo bản vẽ. Mọi nơi khác chỉ tham chiếu qua hằng số ở đây, không viết số bit trực tiếp.</para>
+    /// <para><b>Danh sách IO</b> theo Tuấn 2026-11-03 — đối chiếu lại với bản vẽ điện. Mọi nơi khác chỉ tham chiếu qua
+    /// hằng số ở đây, không viết số bit trực tiếp. Máy KHÔNG có nút RESET, nút tắt còi hay cảm biến áp suất khí — RESET
+    /// và tắt còi bấm trên màn hình.</para>
     ///
-    /// <para><b>Quy ước NC.</b> Tín hiệu an toàn (EmgOk, LightCurtainOk, AirOk) đấu thường đóng / OSSD: <b>1 = bình
-    /// thường</b>, <b>0 = đã tác động hoặc đứt dây</b>.</para>
+    /// <para><b>Quy ước NC.</b> Tín hiệu an toàn (EmgOk, LightCurtainOk) đấu thường đóng / OSSD: <b>1 = bình thường</b>,
+    /// <b>0 = đã tác động hoặc đứt dây</b>.</para>
     /// </summary>
     struct IoMap
     {
-        /// <summary>Số nozzle (đầu hút) N1…N7 trên cụm X–Z — mỗi nozzle một van chân không và một cảm biến chân không.
-        /// Cũng là số cột của tray: gắp cả hàng một lượt.</summary>
+        /// <summary>Số nozzle (đầu hút) N1…N7 trên cụm X–Z — mỗi nozzle một van chân không, một van thổi và một cảm biến
+        /// chân không. Cũng là số cột của tray: gắp cả hàng một lượt.</summary>
         static constexpr int NozzleCount = 7;
+
+        /// <summary>Số kênh chân không đã đi dây: N1…N7 và kênh 8 dự phòng (X018, Y023, Y031).</summary>
+        static constexpr int VacuumChannelCount = 8;
 
         /// <summary>Số tray Shield CAN trên trục Y — mỗi tray TrayRows hàng × 7 cột.</summary>
         static constexpr int TrayCount = 2;
@@ -29,33 +33,41 @@ namespace scs
         static constexpr int BtnStart = 0;              // X000 — bắt sườn lên. Lúc Armed: chạy; tạm dừng: chạy tiếp; chờ tray: tray đã thay.
         static constexpr int BtnStop = 1;               // X001 — bắt sườn lên.
         static constexpr int EmgOk = 2;                 // X002 — NC: 1 = mạch an toàn đóng.
-        static constexpr int BtnReset = 3;              // X003 — cùng tác dụng nút RESET trên màn hình.
-        static constexpr int LightCurtainOk = 4;        // X004 — OSSD rèm sáng: 1 = thông. Chỉ đọc khi SystemData.HasLightCurtain.
-        static constexpr int TrayPresentFirst = 5;      // X005, X006 — cảm biến có tray 1, 2. Chỉ đọc khi SystemData.HasTraySensors.
-        static constexpr int VacuumSensorFirst = 7;     // X007…X013 — cảm biến chân không N1…N7.
-        static constexpr int AirOk = 14;                // X014 — NC: 1 = đủ áp suất khí. Chỉ đọc khi SystemData.HasAirSensor.
+        static constexpr int BtnStart2 = 3;             // X003 — nút START thứ hai, cùng tác dụng BtnStart.
+        static constexpr int DiLaserReady = 4;          // X004 — laser sẵn sàng. Chu trình chưa đọc, chỉ hiện ở trang Manual.
+        static constexpr int DiLaserBusy = 5;           // X005 — laser đang khắc. Chu trình chưa đọc.
+        static constexpr int DiLaserEnd = 6;            // X006 — laser khắc xong. Chu trình chưa đọc.
+        static constexpr int TrayPresentFirst = 8;      // X008, X009 — cảm biến có tray 1, 2. Chỉ đọc khi SystemData.HasTraySensors.
+        static constexpr int LightCurtainOk = 10;       // X010 — OSSD rèm sáng: 1 = thông. Chỉ đọc khi SystemData.HasLightCurtain.
+        static constexpr int VacuumSensorFirst = 11;    // X011…X017 — cảm biến chân không N1…N7; X018 — kênh 8 dự phòng.
 
-        /// <summary>DI cảm biến tray 1…2 (X005, X006).</summary>
+        /// <summary>DI cảm biến tray 1…2 (X008, X009).</summary>
         static constexpr int TrayPresent(int tray) { return TrayPresentFirst + tray - 1; }
 
-        /// <summary>DI cảm biến chân không của nozzle 1…7 (X007…X013).</summary>
+        /// <summary>DI cảm biến chân không của kênh 1…8 (X011…X018).</summary>
         static constexpr int VacuumSensor(int nozzle) { return VacuumSensorFirst + nozzle - 1; }
 
         // ── DO ──
         static constexpr int DoLampStartBtn = 0;        // Y000 — đèn nút START.
         static constexpr int DoLampStopBtn = 1;         // Y001 — đèn nút STOP.
-        static constexpr int DoLampResetBtn = 2;        // Y002 — đèn nút RESET (sáng khi còn alarm).
-        static constexpr int DoVacuumFirst = 3;         // Y003…Y009 — van chân không N1…N7.
-        static constexpr int DoLampRed = 10;            // Y010 — đèn tháp đỏ.
-        static constexpr int DoLampYellow = 11;         // Y011 — đèn tháp vàng.
-        static constexpr int DoLampGreen = 12;          // Y012 — đèn tháp xanh.
-        static constexpr int DoBuzzer = 13;             // Y013 — còi.
-        static constexpr int DoCamLight = 14;           // Y014 — đèn chiếu sáng camera.
-        static constexpr int DoLaserTrigger = 15;       // Y015 — kích khắc laser: ON, giữ MarkTimeMs (model), OFF. Laser không có
-                                                        //        giao tiếp hay tín hiệu "khắc xong" (Tuấn 2026-10-27).
+        static constexpr int DoLampStartBtn2 = 2;       // Y002 — đèn nút START thứ hai, sáng cùng Y000.
+        static constexpr int LaserStart = 3;            // Y003 — kích khắc laser: ON, giữ MarkTimeMs (model), OFF.
+        static constexpr int LaserStop = 4;             // Y004 — dừng laser: một xung khi lệnh khắc bị EMG/alarm cắt ngang.
+        static constexpr int DoVacuumFirst = 6;         // Y006…Y010 — van chân không N1…N5.
+        static constexpr int DoTowerLampRed = 12;       // Y012 — đèn tháp đỏ.
+        static constexpr int DoTowerLampYellow = 13;    // Y013 — đèn tháp vàng.
+        static constexpr int DoTowerLampGreen = 14;     // Y014 — đèn tháp xanh.
+        static constexpr int DoBuzzer = 15;             // Y015 — còi.
+        static constexpr int DoLightCam = 18;           // Y018 — đèn chiếu sáng camera.
+        static constexpr int ZAxisBrakeRelease = 20;    // Y020 — nhả phanh trục Z. Vòng quét giữ ON khi và chỉ khi servo Z đang bật.
+        static constexpr int DoVacuumSixth = 21;        // Y021…Y023 — van chân không N6, N7, kênh 8 dự phòng.
+        static constexpr int VacuumBlowerFirst = 24;    // Y024…Y030 — van thổi N1…N7; Y031 — kênh 8 dự phòng.
 
-        /// <summary>DO van chân không của nozzle 1…7 (Y003…Y009).</summary>
-        static constexpr int DoVacuum(int nozzle) { return DoVacuumFirst + nozzle - 1; }
+        /// <summary>DO van chân không của kênh 1…8 — hai dải rời: Y006…Y010 rồi Y021…Y023.</summary>
+        static constexpr int DoVacuum(int nozzle) { return nozzle <= 5 ? DoVacuumFirst + nozzle - 1 : DoVacuumSixth + nozzle - 6; }
+
+        /// <summary>DO van thổi của kênh 1…8 (Y024…Y031).</summary>
+        static constexpr int VacuumBlower(int nozzle) { return VacuumBlowerFirst + nozzle - 1; }
 
         static constexpr int DiCount = 32;         // R1EC slot 1: module 32 DI → X000…X031.
         static constexpr int DoCount = 32;         // R1EC slot 2: module 32 DO → Y000…Y031.
@@ -72,13 +84,16 @@ namespace scs
                 n[BtnStart] = "START button";
                 n[BtnStop] = "STOP button";
                 n[EmgOk] = "EMG OK (NC)";
-                n[BtnReset] = "RESET button";
-                n[LightCurtainOk] = "Photo safety sensor OK";
+                n[BtnStart2] = "START button #2";
+                n[DiLaserReady] = "Laser ready";
+                n[DiLaserBusy] = "Laser busy";
+                n[DiLaserEnd] = "Laser end";
                 for (int tray = 1; tray <= TrayCount; ++tray)
                     n[TrayPresent(tray)] = std::format("Tray {} sensor", tray);
+                n[LightCurtainOk] = "Photo safety sensor OK";
                 for (int k = 1; k <= NozzleCount; ++k)
                     n[VacuumSensor(k)] = std::format("Vacuum sensor N{}", k);
-                n[AirOk] = "Air pressure OK (NC)";
+                n[VacuumSensor(VacuumChannelCount)] = "(spare) Vacuum sensor N8";
                 return n;
             }();
             return names;
@@ -90,15 +105,22 @@ namespace scs
                 std::vector<std::string> n(DoCount, "(spare)");
                 n[DoLampStartBtn] = "START button lamp";
                 n[DoLampStopBtn] = "STOP button lamp";
-                n[DoLampResetBtn] = "RESET button lamp";
+                n[DoLampStartBtn2] = "START button #2 lamp";
+                n[LaserStart] = "Laser start";
+                n[LaserStop] = "Laser stop";
                 for (int k = 1; k <= NozzleCount; ++k)
+                {
                     n[DoVacuum(k)] = std::format("Solenoid vacuum N{}", k);
-                n[DoLampRed] = "Tower lamp red";
-                n[DoLampYellow] = "Tower lamp yellow";
-                n[DoLampGreen] = "Tower lamp green";
+                    n[VacuumBlower(k)] = std::format("Vacuum blower N{}", k);
+                }
+                n[DoVacuum(VacuumChannelCount)] = "(spare) Solenoid vacuum N8";
+                n[VacuumBlower(VacuumChannelCount)] = "(spare) Vacuum blower N8";
+                n[DoTowerLampRed] = "Tower lamp red";
+                n[DoTowerLampYellow] = "Tower lamp yellow";
+                n[DoTowerLampGreen] = "Tower lamp green";
                 n[DoBuzzer] = "Buzzer";
-                n[DoCamLight] = "CAM light";
-                n[DoLaserTrigger] = "Laser trigger";
+                n[DoLightCam] = "CAM light";
+                n[ZAxisBrakeRelease] = "Z axis brake release";
                 return n;
             }();
             return names;

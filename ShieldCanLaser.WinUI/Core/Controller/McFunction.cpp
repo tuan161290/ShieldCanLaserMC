@@ -7,6 +7,7 @@
 #include <vector>
 
 #include "Infor/AxisId.h"
+#include "Infor/IoMap.h"
 #include "Utility/Log/LogWorker.h"
 
 namespace scs
@@ -26,6 +27,26 @@ namespace scs
     }
 
     const long long McFunction::NeverMoved = LLONG_MIN;
+
+    void McFunction::LaserPulse(int holdMs, std::stop_token ct)
+    {
+        IIoDevice& io = *m_io;
+        io.SetDo(IoMap::LaserStart, true);
+        try
+        {
+            base::Delay(holdMs, ct);
+        }
+        catch (const base::OperationCanceled&)
+        {
+            io.SetDo(IoMap::LaserStart, false);
+            io.SetDo(IoMap::LaserStop, true);
+            base::Delay(m_sys()->LaserPulseMinMs);
+            io.SetDo(IoMap::LaserStop, false);
+            LogWorker::Instance().RecordLog("Laser mark interrupted — laser stop pulsed", LogLevel::Warning, "Laser");
+            throw;
+        }
+        io.SetDo(IoMap::LaserStart, false);
+    }
 
     McFunction::McFunction(MotionConnect& motion, SafetyMonitor& safety, McStatus& status, std::function<std::shared_ptr<SystemData>()> sys)
         : m_motion(motion), m_safety(safety), m_status(status), m_sys(std::move(sys)), m_lastMoveEndedMs(NeverMoved)

@@ -190,9 +190,9 @@
                     </Grid>
                 </Border>
 
-                <!-- ══════════ Van chân không, đèn CAM, laser ══════════ 7 nozzle: nút bật/tắt van (Y003…Y009) + chấm đèn cảm biến chân
-                     không (X007…X013) ngay cạnh — thấy ngay nozzle nào đang ngậm can. Đèn CAM (Y014) bật/tắt tay để chỉnh ống kính.
-                     LASER TEST PULSE kích DO laser (Y015) một xung MarkTimeMs tại chỗ đang đứng (Routine_Calib::TestMark). -->
+                <!-- ══════════ Van chân không, đèn CAM, laser ══════════ 7 nozzle: nút bật/tắt van (Y006…Y010, Y021, Y022) + chấm đèn cảm
+                     biến chân không (X011…X017) ngay cạnh — thấy ngay nozzle nào đang ngậm can. Đèn CAM (Y018) bật/tắt tay để chỉnh ống
+                     kính. LASER TEST PULSE kích LaserStart (Y003) một xung MarkTimeMs tại chỗ đang đứng (Routine_Calib::TestMark). -->
                 <Border Style="{StaticResource CardBorderStyle}" Padding="0" Margin="0,0,0,8">
                     <Grid>
                         <Grid.RowDefinitions>
@@ -214,10 +214,10 @@
                                         ToolTipService.ToolTip="Switch all 7 vacuum valves off."/>
                                 <Border Style="{StaticResource VerticalDividerStyle}" Margin="4,4,12,4"/>
                                 <Button x:Name="CamLightButton" Content="CAM LIGHT" Width="120" Margin="0,0,8,0" Click="OnCamLightClick"
-                                        ToolTipService.ToolTip="Toggle the CAM light (Y014) — for lens / exposure setup. Auto switches it on and off by itself."/>
+                                        ToolTipService.ToolTip="Toggle the CAM light (Y018) — for lens / exposure setup. Auto switches it on and off by itself."/>
                                 <Border Style="{StaticResource VerticalDividerStyle}" Margin="4,4,12,4"/>
                                 <Button x:Name="LaserTestButton" Content="LASER TEST PULSE" Width="170" Margin="0,0,8,0" Click="OnLaserTestClick"
-                                        ToolTipService.ToolTip="Trigger the laser DO (Y015) once at the current position: ON for MarkTimeMs of the model (at least LaserPulseMinMs), then OFF. Refused while an axis is moving."/>
+                                        ToolTipService.ToolTip="Trigger the laser start output (Y003) once at the current position: ON for MarkTimeMs of the model (at least LaserPulseMinMs), then OFF. Refused while an axis is moving."/>
                                 <TextBlock x:Name="LaserTestText" FontSize="12" VerticalAlignment="Center"
                                            Foreground="{StaticResource TextSecondaryBrush}"/>
                             </StackPanel>
@@ -241,29 +241,27 @@
                         <StackPanel Grid.Row="2" Margin="12">
                             <TextBlock Style="{StaticResource HintStyle}"
                                        Text="Replaces the real button panel and safety circuit. Use it to test EMG, light curtain and link-loss paths without unplugging cables."/>
-                            <!-- Nút cứng nhấn-nhả (START/STOP/RESET) | tín hiệu an toàn giữ mức (EMG / rèm sáng / áp suất khí). -->
+                            <!-- Nút cứng nhấn-nhả (START/STOP/START #2) | tín hiệu an toàn giữ mức (EMG / rèm sáng). -->
                             <StackPanel Orientation="Horizontal">
                                 <Button Content="START" Width="110" Margin="0,0,8,8" Click="OnSimStartClick"
                                         ToolTipService.ToolTip="Simulate START button (X000) — starts the cycle when AUTO ready, resumes when paused, confirms tray change when waiting"/>
                                 <Button Content="STOP" Width="110" Margin="0,0,8,8" Click="OnSimStopClick"
                                         ToolTipService.ToolTip="Simulate STOP button (X001)"/>
-                                <Button Content="RESET" Width="110" Margin="0,0,8,8" Click="OnSimResetClick"
-                                        ToolTipService.ToolTip="Simulate RESET button (X003)"/>
+                                <Button Content="START #2" Width="110" Margin="0,0,8,8" Click="OnSimStart2Click"
+                                        ToolTipService.ToolTip="Simulate second START button (X003) — same action as START"/>
                                 <Border Style="{StaticResource VerticalDividerStyle}" Margin="4,4,12,12"/>
                                 <Button Content="EMG" Width="90" Margin="0,0,8,8" Click="OnSimEmgClick"
                                         ToolTipService.ToolTip="Press/release EMG (X002)"/>
                                 <Button Content="PHOTO SAFETY" Width="140" Margin="0,0,8,8" Click="OnSimCurtainClick"
-                                        ToolTipService.ToolTip="Photo safety sensor (X004) — active only when 'Photo safety sensor fitted' is enabled on the Setting page"/>
-                                <Button Content="AIR OK" Width="100" Margin="0,0,8,8" Click="OnSimAirClick"
-                                        ToolTipService.ToolTip="Air pressure switch (X014) — active only when 'Air pressure sensor fitted' is enabled on the Setting page"/>
+                                        ToolTipService.ToolTip="Photo safety sensor (X010) — active only when 'Photo safety sensor fitted' is enabled on the Setting page"/>
                             </StackPanel>
                             <!-- Cảm biến giữ mức của chu trình: 2 tray. Cảm biến chân không tự bám theo van — trừ nozzle đặt "hút trượt"
                                  (N1…N7 dựng trong code) để chạy nhánh hút hụt / ô NG. -->
                             <StackPanel Orientation="Horizontal">
                                 <Button Content="TRAY 1" Width="90" Margin="0,0,8,8" Click="OnSimTray1Click"
-                                        ToolTipService.ToolTip="Tray 1 present/absent (X005)"/>
+                                        ToolTipService.ToolTip="Tray 1 present/absent (X008)"/>
                                 <Button Content="TRAY 2" Width="90" Margin="0,0,8,8" Click="OnSimTray2Click"
-                                        ToolTipService.ToolTip="Tray 2 present/absent (X006)"/>
+                                        ToolTipService.ToolTip="Tray 2 present/absent (X009)"/>
                                 <Border Style="{StaticResource VerticalDividerStyle}" Margin="4,4,12,12"/>
                                 <TextBlock Text="Pick miss:" FontSize="12" Margin="0,0,8,8" VerticalAlignment="Center"
                                            Foreground="{StaticResource TextSecondaryBrush}"/>

@@ -28,13 +28,6 @@ namespace WF = winrt::Windows::Foundation;
 
 namespace
 {
-    std::string When(const std::optional<scs::TimePoint>& t)
-    {
-        return t ? scs::FormatLocal(*t, "dd/MM HH:mm") : std::string();
-    }
-
-    std::string Num(double v) { return scs::VmCycle::Fmt(v); }
-
     /// Đặt tooltip chỉ khi chữ đổi — vòng cập nhật 100 ms không được dựng lại tooltip mỗi nhịp.
     void SetTip(FrameworkElement const& e, std::string& last, std::string const& text)
     {
@@ -60,12 +53,8 @@ namespace winrt::ShieldCanLaser::implementation
         m_loaded = true;
         BuildJogGrid();
         BuildNozzleChips();
-        BuildNumpad();
         BuildNozzleSummary();
-        LoadInputs();
-        // Nozzle đang chọn = nozzle ngậm can mẫu của bước lưới (system.json).
-        int k = scs::McDataManager::SysData()->VisionCalib.CalibNozzle;
-        SelectNozzle(k >= 1 && k <= NozzleCount ? k : 1);
+        SelectNozzle(1);
         SelectStep(0);
         OnTick();
         if (m_visible) QueueVmWork();   // OnShown(true) tới trước Loaded thì EnsureVmPanes đã bỏ qua
@@ -110,7 +99,7 @@ namespace winrt::ShieldCanLaser::implementation
         }
     }
 
-    // 7 nút chọn nozzle: số to + chấm trạng thái (xanh = master đã đặt).
+    // 7 nút chọn nozzle: số to + chấm trạng thái (lần kiểm tra gần nhất: xanh OK, đỏ NG, xám chưa kiểm tra).
     void VisionEditPage::BuildNozzleChips()
     {
         for (int k = 1; k <= NozzleCount; ++k)
@@ -141,7 +130,7 @@ namespace winrt::ShieldCanLaser::implementation
             b.Content(content);
 
             b.Click([weak = get_weak()](WF::IInspectable const& s, RoutedEventArgs const&) {
-                if (auto self = weak.get()) { self->CommitInputs(); self->SelectNozzle(TagOf(s)); }
+                if (auto self = weak.get()) self->SelectNozzle(TagOf(s));
             });
             NozzleRow().Children().Append(b);
             m_nozzleChips.push_back(b);
@@ -149,29 +138,7 @@ namespace winrt::ShieldCanLaser::implementation
         }
     }
 
-    // Numpad 3×3 của lưới 9 điểm: 7 8 9 hàng trên, 1 2 3 hàng dưới, 5 = tâm. Bấm đúp = chạy tới rồi nạp một điểm.
-    void VisionEditPage::BuildNumpad()
-    {
-        for (int n = 1; n <= 9; ++n)
-        {
-            Button b;
-            b.Content(box_value(winrt::to_hstring(n)));
-            b.Tag(box_value(winrt::to_hstring(n)));
-            b.Width(44);
-            b.Padding(ThicknessHelper::FromUniformLength(0));
-            ToolTipService::SetToolTip(b, box_value(ui::H(std::format("Double-click: move to point {} and load one point into N-Point", n))));
-            b.DoubleTapped([weak = get_weak()](WF::IInspectable const& s, Input::DoubleTappedRoutedEventArgs const& e) {
-                if (auto self = weak.get()) self->OnGridPointDoubleTapped(s, e);
-            });
-            int idx = n - 1;
-            Grid::SetRow(b, 2 - idx / 3);
-            Grid::SetColumn(b, idx % 3);
-            Numpad().Children().Append(b);
-            m_numpad.push_back(b);
-        }
-    }
-
-    // 7 dòng tóm tắt (bước Master): "N1  ref +0.123/−0.045 · 12/10 14:02 · trim +0.05/0".
+    // 7 dòng tóm tắt (bước Thử khắc): "N1  trim +0.050/+0.000  · last OK (Result 1)".
     void VisionEditPage::BuildNozzleSummary()
     {
         for (int k = 1; k <= NozzleCount; ++k)
@@ -197,7 +164,7 @@ namespace winrt::ShieldCanLaser::implementation
         for (auto& b : m_jogButtons)
             if (b.IsEnabled() == busy) b.IsEnabled(!busy);
         if (ZSafeButton().IsEnabled() == busy) ZSafeButton().IsEnabled(!busy);
-        // Đang chạy một bước: khoá chọn nozzle/bước và mọi nút của khung — một việc một lúc. STOP ở thanh trên vẫn bấm được.
+        // Đang chạy một nút: khoá chọn nozzle/bước và mọi nút của khung — một việc một lúc. STOP ở thanh trên vẫn bấm được.
         for (FrameworkElement e : { NavPanel().as<FrameworkElement>(), StepHost().as<FrameworkElement>() })
             if (e.IsHitTestVisible() == busy) { e.IsHitTestVisible(!busy); e.Opacity(busy ? 0.55 : 1.0); }
 
@@ -238,43 +205,33 @@ namespace winrt::ShieldCanLaser::implementation
             QueueVmWork();
     }
 
-    // Trạng thái của cột hiệu chuẩn: chip cổng Auto, chấm trạng thái từng nozzle, thanh bước, chữ trong khung của bước.
+    // Trạng thái của cột thử: chấm từng nozzle, thanh bước, chữ trong khung của bước.
     void VisionEditPage::UpdateCalibView()
     {
         auto model = scs::McDataManager::Model();
         auto sys = scs::McDataManager::SysData();
         if (!model || !sys) return;
-        const auto& c = model->Calib;
-        const auto& n = c.Nozzle(m_nozzle);
         auto cal = scs::McControl::Calib();
+        auto inspectText = [](const std::optional<scs::VmInspectRead>& r) {
+            return r ? r->Describe() : std::string("not inspected");
+        };
 
-        // ── chip cổng Auto ──
-        auto gate = scs::VmCycle::EvaluateCalib(model.get(), sys.get(), 0);
-        bool ready = gate.Ready();
-        GateChip().Background(ui::Res(ready ? L"SuccessBackgroundBrush" : L"CautionBackgroundBrush"));
-        GateDot().Fill(ui::Res(ready ? L"SuccessBrush" : L"CautionBrush"));
-        GateText().Foreground(ui::Res(ready ? L"SuccessBrush" : L"CautionBrush"));
-        ui::SetText(GateText(), ready ? std::string("Ready for Auto") : std::string("Not ready"));
-        SetTip(GateChip(), m_gateTip, gate.Describe());
-
-        // ── chip nozzle: xanh = master đã đặt; xám = chưa ──
+        // ── chip nozzle: chấm = lần kiểm tra gần nhất ──
         for (int k = 1; k <= NozzleCount && k <= (int)m_nozzleChips.size(); ++k)
         {
-            const auto& nk = c.Nozzle(k);
-            m_nozzleDots[k - 1].Fill(ui::Res(nk.RefMeasured() ? L"SuccessBrush" : L"ControlStrokeSecondaryBrush"));
+            auto last = cal ? cal->LastInspect(k) : std::nullopt;
+            const auto& t = model->Trim.Nozzle(k);
+            m_nozzleDots[k - 1].Fill(ui::Res(!last ? L"ControlStrokeSecondaryBrush" : last->Pass ? L"SuccessBrush" : L"CriticalBrush"));
             ui::SetTint(m_nozzleChips[k - 1], k == m_nozzle ? ui::Tint::Accent : ui::Tint::None);
-            SetTip(m_nozzleChips[k - 1], m_nozzleTips[k], std::format("Nozzle {} — master: {}{}", k,
-                nk.RefMeasured() ? "set " + When(nk.RefAt) : std::string("not set"),
-                (nk.TrimX != 0 || nk.TrimZ != 0) ? std::format(" · trim {:+.3f}/{:+.3f}", nk.TrimX, nk.TrimZ) : std::string()));
+            SetTip(m_nozzleChips[k - 1], m_nozzleTips[k], std::format("Nozzle {} — trim {:+.3f}/{:+.3f} · last inspection: {}", k, t.X, t.Z, inspectText(last)));
         }
 
         // ── thanh bước ──
-        std::optional<scs::Routine_Calib::LastRead> last = cal ? cal->Last(m_nozzle) : std::nullopt;
-        std::array<bool, StepCount> done{ c.GridVerified(), n.RefMeasured(), false };
+        const auto& trim = model->Trim.Nozzle(m_nozzle);
+        auto last = cal ? cal->LastInspect(m_nozzle) : std::nullopt;
         std::array<std::string, StepCount> status{
-            c.GridVerified() ? When(c.GridVerifiedAt) : std::string("not verified"),
-            n.RefMeasured() ? When(n.RefAt) : std::string("not set"),
-            (n.TrimX != 0 || n.TrimZ != 0) ? std::string("trim set") : std::string()
+            (trim.X != 0 || trim.Z != 0) ? std::string("trim set") : std::string(),
+            last ? (last->Pass ? std::string("last OK") : std::string("last NG")) : std::string()
         };
         for (int i = 0; i < StepCount; ++i)
         {
@@ -282,73 +239,50 @@ namespace winrt::ShieldCanLaser::implementation
             StepButton(i).Background(sel ? ui::Res(L"SubtleSelectedBrush") : Media::Brush{ nullptr });
             StepLabel(i).Foreground(ui::Res(sel ? L"AccentTextBrush" : L"TextSecondaryBrush"));
             StepLabel(i).FontWeight(sel ? Windows::UI::Text::FontWeights::SemiBold() : Windows::UI::Text::FontWeights::Normal());
-            StepBadge(i).Background(ui::Res(done[i] ? L"SuccessBrush" : sel ? L"AccentFillBrush" : L"ControlFillBrush"));
-            StepBadge(i).BorderBrush(ui::Res(done[i] ? L"SuccessBrush" : sel ? L"AccentFillBrush" : L"ControlStrokeSecondaryBrush"));
-            StepBadgeText(i).Foreground(ui::Res(done[i] || sel ? L"TextOnAccentBrush" : L"TextSecondaryBrush"));
-            ui::SetText(StepBadgeText(i), done[i] ? std::string("✓") : std::to_string(i + 1));
+            StepBadge(i).Background(ui::Res(sel ? L"AccentFillBrush" : L"ControlFillBrush"));
+            StepBadge(i).BorderBrush(ui::Res(sel ? L"AccentFillBrush" : L"ControlStrokeSecondaryBrush"));
+            StepBadgeText(i).Foreground(ui::Res(sel ? L"TextOnAccentBrush" : L"TextSecondaryBrush"));
             ui::SetText(StepStatus(i), status[i]);
         }
 
         // ── khung của bước ──
-        const auto& vc = sys->VisionCalib;
-        ui::SetText(GridTitle(), std::format("Grid X × Z · nozzle {}", m_nozzle));
-        ui::SetText(CenterText(), vc.CenterSet ? std::format("X {:.3f} · Z {:.3f}", vc.CenterX, vc.CenterZ) : std::string("not saved"));
-        ui::SetText(MasterTitle(), std::format("Master · nozzle {}", m_nozzle));
         ui::SetText(LaserTitle(), std::format("Laser trial · nozzle {}", m_nozzle));
+        ui::SetText(InspectTitle(), std::format("Inspection · nozzle {}", m_nozzle));
 
-        // Master của nozzle đang chọn + lần soi gần nhất (Rel và độ lệch so với master).
-        ui::SetText(MasterStatusText(), n.RefMeasured()
-            ? std::format("Ref X {:+.3f} · Z {:+.3f} mm · set {}", n.RefX, n.RefZ, When(n.RefAt))
-            : std::string("Master not set — SET MASTER with a correctly seated can"));
-        ui::SetText(LastReadText(), last
-            ? std::format("Last capture: Rel X {:+.3f} · Z {:+.3f} mm → dX {:+.3f} · dZ {:+.3f}", last->RelX, last->RelZ, last->Dx, last->Dz)
-            : std::string("No capture yet"));
+        // Thử khắc: đích sẽ tới = điểm teach + trim (không bù độ lệch can).
+        {
+            std::string why;
+            auto p = model->LaserPoint(m_nozzle, why);
+            ui::SetText(LaserStatusText(), !p || !p->Has(scs::AxisId::X) || !p->Has(scs::AxisId::Z)
+                ? std::string("Laser point not taught (Teaching page)")
+                : std::format("Target X {:.3f} · Z {:.3f}  (teach + trim {:+.3f}/{:+.3f})",
+                              p->Get(scs::AxisId::X) + trim.X, p->Get(scs::AxisId::Z) + trim.Z, trim.X, trim.Z));
+        }
 
         // 7 dòng tóm tắt.
         for (int k = 1; k <= NozzleCount && k <= (int)m_summaryRows.size(); ++k)
         {
-            const auto& nk = c.Nozzle(k);
-            std::string line = nk.RefMeasured()
-                ? std::format("N{}  ref {:+.3f}/{:+.3f}  {}", k, nk.RefX, nk.RefZ, When(nk.RefAt))
-                : std::format("N{}  master not set", k);
-            if (nk.TrimX != 0 || nk.TrimZ != 0) line += std::format("  trim {:+.3f}/{:+.3f}", nk.TrimX, nk.TrimZ);
-            ui::SetText(m_summaryRows[k - 1], line);
-            m_summaryRows[k - 1].Foreground(ui::Res(k == m_nozzle ? L"AccentTextBrush" : nk.RefMeasured() ? L"TextPrimaryBrush" : L"TextTertiaryBrush"));
+            const auto& t = model->Trim.Nozzle(k);
+            auto lk = cal ? cal->LastInspect(k) : std::nullopt;
+            ui::SetText(m_summaryRows[k - 1], std::format("N{}  trim {:+.3f}/{:+.3f}  · {}", k, t.X, t.Z, inspectText(lk)));
+            m_summaryRows[k - 1].Foreground(ui::Res(k == m_nozzle ? L"AccentTextBrush" : L"TextPrimaryBrush"));
         }
 
-        // Thử laser: đích sẽ tới = điểm teach + trim + bù theo lần soi gần nhất.
-        std::string laser;
-        {
-            std::string why;
-            auto p = model->LaserPoint(m_nozzle, why);
-            if (!p || !p->Has(scs::AxisId::X) || !p->Has(scs::AxisId::Z)) laser = "Laser point not taught (Teaching page)";
-            else
-            {
-                bool useVision = last.has_value() && n.RefMeasured();
-                auto dev = scs::VmCycle::Deviation(n, last ? last->RelX : 0.0, last ? last->RelZ : 0.0, sys->LaserComp,
-                                                   p->Get(scs::AxisId::X), p->Get(scs::AxisId::Z), useVision);
-                laser = dev.Ok
-                    ? std::format("Target X {:.3f} · Z {:.3f}  ({}dX {:+.3f} · dZ {:+.3f} · trim {:+.3f}/{:+.3f})",
-                                  dev.TargetX, dev.TargetZ, useVision ? "" : "no capture — ", dev.Dx, dev.Dz, n.TrimX, n.TrimZ)
-                    : "Cannot compensate: " + dev.Why;
-            }
-        }
-        ui::SetText(LaserStatusText(), laser);
+        // Kiểm tra: đường dẫn đang cấu hình + lần gần nhất của nozzle đang chọn.
+        const auto& names = sys->VisionOutputs;
+        std::string pathWhy = names.InspectPathProblem();
+        ui::SetText(InspectPathText(), pathWhy.empty() ? "Flow.Group: " + names.InspectPath + " · output " + scs::VisionOutputNames::OutResult
+                                                       : "Setting page: " + pathWhy);
+        ui::SetText(LastInspectText(), "Last: " + inspectText(last));
+        LastInspectText().Foreground(ui::Res(!last ? L"TextSecondaryBrush" : last->Pass ? L"SuccessBrush" : L"CriticalBrush"));
     }
 
-    // ═════════════════════════ chọn nozzle / bước, ô nhập ═════════════════════════
+    // ═════════════════════════ chọn nozzle / bước ═════════════════════════
 
     void VisionEditPage::SelectNozzle(int nozzle)
     {
         if (nozzle < 1 || nozzle > NozzleCount) return;
         m_nozzle = nozzle;
-        // Nozzle ngậm can mẫu của bước lưới đi theo lựa chọn này (system.json).
-        auto sys = scs::McDataManager::SysData();
-        if (sys && sys->VisionCalib.CalibNozzle != nozzle)
-        {
-            sys->VisionCalib.CalibNozzle = nozzle;
-            scs::McDataManager::SaveSystemData();
-        }
         LoadTrim();
         if (m_loaded) UpdateCalibView();
     }
@@ -363,72 +297,16 @@ namespace winrt::ShieldCanLaser::implementation
 
     void VisionEditPage::OnStepClick(WF::IInspectable const& sender, RoutedEventArgs const&)
     {
-        CommitInputs();
         SelectStep(TagOf(sender));
-    }
-
-    void VisionEditPage::OnInputLostFocus(WF::IInspectable const&, RoutedEventArgs const&)
-    {
-        CommitInputs();
-    }
-
-    void VisionEditPage::LoadInputs()
-    {
-        auto sys = scs::McDataManager::SysData();
-        const auto& c = sys->VisionCalib;
-        GridStepXBox().Text(ui::H(Num(c.GridStepX)));
-        GridStepZBox().Text(ui::H(Num(c.GridStepZ)));
-        ShotsBox().Text(winrt::to_hstring(c.ShotsPerPoint));
-        VerifyStepBox().Text(ui::H(Num(c.VerifyStepMm)));
-        ResidualTolBox().Text(ui::H(Num(c.ResidualTolMm)));
-        const auto& lc = sys->LaserComp;
-        GainXBox().Text(ui::H(Num(lc.GainX)));
-        GainZBox().Text(ui::H(Num(lc.GainZ)));
-        MaxCompBox().Text(ui::H(Num(lc.MaxCompMm)));
     }
 
     void VisionEditPage::LoadTrim()
     {
         auto model = scs::McDataManager::Model();
         if (!model || !m_loaded) return;
-        const auto& n = model->Calib.Nozzle(m_nozzle);
-        TrimXBox().Text(ui::H(std::format("{:.3f}", n.TrimX)));
-        TrimZBox().Text(ui::H(std::format("{:.3f}", n.TrimZ)));
-    }
-
-    // Ô hỏng thì trả lại số cũ — không lưu số rác, cũng không bật hộp thoại giữa lúc gõ.
-    void VisionEditPage::CommitInputs()
-    {
-        if (!m_loaded) return;
-        auto sys = scs::McDataManager::SysData();
-        auto& c = sys->VisionCalib;
-        auto& lc = sys->LaserComp;
-        bool changed = false;
-        auto num = [&](TextBox const& box, double& field, double lo, double hi) {
-            double v = 0;
-            if (ui::ParseDouble(box.Text(), v) && v >= lo && v <= hi)
-            {
-                if (v != field) { field = v; changed = true; }
-            }
-            box.Text(ui::H(Num(field)));
-        };
-        auto integer = [&](TextBox const& box, int& field, int lo, int hi) {
-            int v = 0;
-            if (ui::ParseInt(box.Text(), v) && v >= lo && v <= hi)
-            {
-                if (v != field) { field = v; changed = true; }
-            }
-            box.Text(winrt::to_hstring(field));
-        };
-        num(GridStepXBox(), c.GridStepX, 0.1, 100);
-        num(GridStepZBox(), c.GridStepZ, 0.1, 100);
-        integer(ShotsBox(), c.ShotsPerPoint, 1, 50);
-        num(VerifyStepBox(), c.VerifyStepMm, -50, 50);
-        num(ResidualTolBox(), c.ResidualTolMm, 0.001, 5);
-        num(GainXBox(), lc.GainX, -10, 10);
-        num(GainZBox(), lc.GainZ, -10, 10);
-        num(MaxCompBox(), lc.MaxCompMm, 0.01, 50);
-        if (changed) scs::McDataManager::SaveSystemData();
+        const auto& t = model->Trim.Nozzle(m_nozzle);
+        TrimXBox().Text(ui::H(std::format("{:.3f}", t.X)));
+        TrimZBox().Text(ui::H(std::format("{:.3f}", t.Z)));
     }
 
     // ═════════════════════════ chạy một bước ═════════════════════════
@@ -449,7 +327,6 @@ namespace winrt::ShieldCanLaser::implementation
         std::string why;
         if (!CanRun(needsOrigin, why)) { ShowResult(ResultKind::Fail, title + ": " + why); return; }
         if (m_busy.exchange(true)) return;
-        CommitInputs();
         m_runTitle = title;
         {
             std::lock_guard<std::mutex> l(*m_progressMutex);
@@ -494,76 +371,7 @@ namespace winrt::ShieldCanLaser::implementation
         ui::SetText(ResultText(), text);
     }
 
-    // ── 1 · Lưới X × Z ──
-
-    void VisionEditPage::OnSaveCenterClick(WF::IInspectable const&, RoutedEventArgs const&)
-    {
-        Run("Set center", [](scs::Routine_Calib& cal, std::stop_token) { return cal.SaveGridCenter(); });
-    }
-
-    void VisionEditPage::OnGridPointDoubleTapped(WF::IInspectable const& sender, Input::DoubleTappedRoutedEventArgs const&)
-    {
-        int n = TagOf(sender);
-        if (n < 1 || n > 9) return;
-        Run(std::format("Point {}", n), [n](scs::Routine_Calib& cal, std::stop_token ct) { return cal.RunGridPoint(n, ct); });
-    }
-
-    winrt::fire_and_forget VisionEditPage::OnRunGridDoubleTapped(WF::IInspectable const&, Input::DoubleTappedRoutedEventArgs const&)
-    {
-        auto strong = get_strong();
-        if (m_busy.load()) co_return;
-        int nozzle = m_nozzle;
-        bool ok = co_await ui::Dialogs::ConfirmAsync(
-            std::format("The app will press Clear Point on the N-Point module in Flow LocateCan, then run 9 points with nozzle {} "
-                        "(holding the master can), loading one point each (calibration branch, IsLocate = 0).\n\n"
-                        "Is the N-Point module ENABLED? When done: Calibrate → Create Calibration File, then disable the module.", nozzle),
-            "Run 9 points");
-        if (!ok) co_return;
-        auto progress = m_progress;
-        auto mutex = m_progressMutex;
-        Run("Run 9 points", [progress, mutex](scs::Routine_Calib& cal, std::stop_token ct) {
-            return cal.RunGrid([progress, mutex](const std::string& s) { std::lock_guard<std::mutex> l(*mutex); *progress = s; }, ct);
-        });
-    }
-
-    void VisionEditPage::OnCaptureHereClick(WF::IInspectable const&, RoutedEventArgs const&)
-    {
-        Run("Capture here", [](scs::Routine_Calib& cal, std::stop_token ct) { return cal.TriggerHere(ct); });
-    }
-
-    void VisionEditPage::OnVerifyGridDoubleTapped(WF::IInspectable const&, Input::DoubleTappedRoutedEventArgs const&)
-    {
-        Run("Verify grid", [](scs::Routine_Calib& cal, std::stop_token ct) { return cal.VerifyGrid(ct); });
-    }
-
-    // ── 2 · Master ──
-
-    void VisionEditPage::OnGoToCamDoubleTapped(WF::IInspectable const&, Input::DoubleTappedRoutedEventArgs const&)
-    {
-        int k = m_nozzle;
-        Run(std::format("Go to CAM · nozzle {}", k), [k](scs::Routine_Calib& cal, std::stop_token ct) { return cal.GoToCam(k, ct); });
-    }
-
-    void VisionEditPage::OnCaptureClick(WF::IInspectable const&, RoutedEventArgs const&)
-    {
-        int k = m_nozzle;
-        Run(std::format("Capture · nozzle {}", k), [k](scs::Routine_Calib& cal, std::stop_token ct) { return cal.Capture(k, ct); });
-    }
-
-    winrt::fire_and_forget VisionEditPage::OnSetMasterDoubleTapped(WF::IInspectable const&, Input::DoubleTappedRoutedEventArgs const&)
-    {
-        auto strong = get_strong();
-        if (m_busy.load()) co_return;
-        int k = m_nozzle;
-        bool ok = co_await ui::Dialogs::ConfirmAsync(
-            std::format("Nozzle {} will move to its CAM point and the average of N images becomes the master (Ref) of this nozzle. "
-                        "Its laser trim is cleared.\n\nIs a correctly seated master can held on nozzle {}?", k, k),
-            std::format("Set master · nozzle {}", k));
-        if (!ok) co_return;
-        Run(std::format("Set master · nozzle {}", k), [k](scs::Routine_Calib& cal, std::stop_token ct) { return cal.SetMaster(k, ct); });
-    }
-
-    // ── 3 · Thử laser ──
+    // ── 1 · Thử khắc ──
 
     void VisionEditPage::OnGoToLaserDoubleTapped(WF::IInspectable const&, Input::DoubleTappedRoutedEventArgs const&)
     {
@@ -599,13 +407,27 @@ namespace winrt::ShieldCanLaser::implementation
         }, false);
     }
 
+    // ── 2 · Kiểm tra ──
+
+    void VisionEditPage::OnGoToCamDoubleTapped(WF::IInspectable const&, Input::DoubleTappedRoutedEventArgs const&)
+    {
+        int k = m_nozzle;
+        Run(std::format("Go to CAM · nozzle {}", k), [k](scs::Routine_Calib& cal, std::stop_token ct) { return cal.GoToCam(k, ct); });
+    }
+
+    // Không chạy trục — chỉ chụp tại chỗ, nên không đòi đã về gốc.
+    void VisionEditPage::OnInspectClick(WF::IInspectable const&, RoutedEventArgs const&)
+    {
+        int k = m_nozzle;
+        Run(std::format("Inspect · nozzle {}", k), [k](scs::Routine_Calib& cal, std::stop_token ct) { return cal.Inspect(k, ct); }, false);
+    }
+
     // ═════════════════════════ VisionMaster ═════════════════════════
 
     void VisionEditPage::OnShown(bool visible)
     {
         m_visible = visible;
         if (visible) QueueVmWork();
-        else CommitInputs();
         m_globalTool.SetVisible(visible);
         m_config.SetVisible(visible);
     }
@@ -731,31 +553,31 @@ namespace winrt::ShieldCanLaser::implementation
 
     Button VisionEditPage::StepButton(int i)
     {
-        switch (i) { case 0: return StepButton0(); case 1: return StepButton1(); default: return StepButton2(); }
+        return i == 0 ? StepButton0() : StepButton1();
     }
 
     Border VisionEditPage::StepBadge(int i)
     {
-        switch (i) { case 0: return StepBadge0(); case 1: return StepBadge1(); default: return StepBadge2(); }
+        return i == 0 ? StepBadge0() : StepBadge1();
     }
 
     TextBlock VisionEditPage::StepBadgeText(int i)
     {
-        switch (i) { case 0: return StepBadgeText0(); case 1: return StepBadgeText1(); default: return StepBadgeText2(); }
+        return i == 0 ? StepBadgeText0() : StepBadgeText1();
     }
 
     TextBlock VisionEditPage::StepStatus(int i)
     {
-        switch (i) { case 0: return StepStatus0(); case 1: return StepStatus1(); default: return StepStatus2(); }
+        return i == 0 ? StepStatus0() : StepStatus1();
     }
 
     TextBlock VisionEditPage::StepLabel(int i)
     {
-        switch (i) { case 0: return StepLabel0(); case 1: return StepLabel1(); default: return StepLabel2(); }
+        return i == 0 ? StepLabel0() : StepLabel1();
     }
 
     FrameworkElement VisionEditPage::StepPanel(int i)
     {
-        switch (i) { case 0: return StepPanel0(); case 1: return StepPanel1(); default: return StepPanel2(); }
+        return i == 0 ? StepPanel0().as<FrameworkElement>() : StepPanel1().as<FrameworkElement>();
     }
 }
